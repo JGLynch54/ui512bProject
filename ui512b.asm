@@ -94,8 +94,9 @@ lt512:
 nobits:
 ;			Word shifts:
 			SHR				R8W, 6
-			CMP				R8W, 0
-			JE				store_exit			
+		;	CMP				R8W, 0
+		;	JE				store_exit		
+		JZ			store_exit
 			CMP				R8W, 1
 			JNE				test2ws
 			VALIGNQ			ZMM31, ZMM31, ZMM28, 7
