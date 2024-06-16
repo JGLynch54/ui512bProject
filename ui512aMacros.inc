@@ -101,8 +101,8 @@ Q_PTR       EQU             QWORD PTR
 D_PTR       EQU             DWORD PTR
 W_PTR       EQU             WORD PTR
 B_PTR       EQU             BYTE PTR
-m32BCST		EQU				DWORD BCST
-m64BCST		EQU				QWORD BCST
+m32BCST     EQU				DWORD BCST
+m64BCST     EQU				QWORD BCST
 
 ;			mask codes (for compares)
 CPEQ		EQU				0

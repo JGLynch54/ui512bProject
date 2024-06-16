@@ -53,13 +53,14 @@
 			INCLUDE			ui512bMacros.inc
 			OPTION			casemap:none
 .CONST
-aligned64	SEGMENT			ALIGN (64) 
-qOnes		QWORD			8 DUP (0ffffffffffffffffh)
-aligned64	ENDS
+
+aligned64   SEGMENT         ALIGN (64)
+qOnes       QWORD           8 DUP (0ffffffffffffffffh)
+aligned64   ENDS
 
 .CODE
-			OPTION			PROLOGUE:none
-			OPTION			EPILOGUE:none
+            OPTION          PROLOGUE:none
+            OPTION          EPILOGUE:none
 
 ;			shr_u		-	shift supplied source 512bit (8 QWORDS) right, put in destination
 ;			Prototype:		void shr_u( u64* destination, u64* source, u32 bits_to_shift)
@@ -69,10 +70,10 @@ aligned64	ENDS
 ;			returns		-	nothing (0)
 ;			Note: unwound loop(s). More instructions, but fewer executed (no loop save, setup, compare loop), faster, fewer regs used
 
-shr_u		PROC			PUBLIC 
+shr_u		PROC			PUBLIC
 			CMP				R8W, 0						; handle edge case, shift zero bits
 			JNE				notzero
-			CMP				RCX, RDX					
+			CMP				RCX, RDX
 			JE				shr_u_ret					; destination is the same as the source: no copy needed
 			Copy512			RCX, RDX					; no shift, just copy (destination, source already in regs)
 			JMP				shr_u_ret
@@ -94,9 +95,7 @@ lt512:
 nobits:
 ;			Word shifts:
 			SHR				R8W, 6
-		;	CMP				R8W, 0
-		;	JE				store_exit		
-		JZ			store_exit
+			JZ				store_exit
 			CMP				R8W, 1
 			JNE				test2ws
 			VALIGNQ			ZMM31, ZMM31, ZMM28, 7

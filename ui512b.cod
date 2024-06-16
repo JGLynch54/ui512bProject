@@ -1,4 +1,4 @@
-Microsoft (R) Macro Assembler (x64) Version 14.40.33811.0   06/15/24 13:59:52
+Microsoft (R) Macro Assembler (x64) Version 14.40.33811.0   06/16/24 17:18:12
 ui512b.asm						     Page 1 - 1
 
 
@@ -117,8 +117,8 @@ ui512b.asm						     Page 1 - 1
  = DWORD PTR		      C D_PTR       EQU             DWORD PTR
  = WORD PTR		      C W_PTR       EQU             WORD PTR
  = BYTE PTR		      C B_PTR       EQU             BYTE PTR
- = DWORD BCST		      C m32BCST		EQU				DWORD BCST
- = QWORD BCST		      C m64BCST		EQU				QWORD BCST
+ = DWORD BCST		      C m32BCST     EQU				DWORD BCST
+ = QWORD BCST		      C m64BCST     EQU				QWORD BCST
 			      C 
 			      C ;			mask codes (for compares)
  = 00000000		      C CPEQ		EQU				0
@@ -268,15 +268,16 @@ ui512b.asm						     Page 1 - 1
 			      C 
 							OPTION			casemap:none
  00000000			.CONST
- 00000000			aligned64	SEGMENT			ALIGN (64) 
- 00000000  00000008 [		qOnes		QWORD			8 DUP (0ffffffffffffffffh)
+
+ 00000000			aligned64   SEGMENT         ALIGN (64)
+ 00000000  00000008 [		qOnes       QWORD           8 DUP (0ffffffffffffffffh)
 	    FFFFFFFFFFFFFFFF
 	   ]
- 00000000			aligned64	ENDS
+ 00000000			aligned64   ENDS
 
  00000000			.CODE
-							OPTION			PROLOGUE:none
-							OPTION			EPILOGUE:none
+				            OPTION          PROLOGUE:none
+				            OPTION          EPILOGUE:none
 
 				;			shr_u		-	shift supplied source 512bit (8 QWORDS) right, put in destination
 				;			Prototype:		void shr_u( u64* destination, u64* source, u32 bits_to_shift)
@@ -286,11 +287,11 @@ ui512b.asm						     Page 1 - 1
 				;			returns		-	nothing (0)
 				;			Note: unwound loop(s). More instructions, but fewer executed (no loop save, setup, compare loop), faster, fewer regs used
 
- 00000000			shr_u		PROC			PUBLIC 
+ 00000000			shr_u		PROC			PUBLIC
  00000000  66| 41/ 83 F8				CMP				R8W, 0						; handle edge case, shift zero bits
 	   00
  00000005  75 1A					JNE				notzero
- 00000007  48/ 3B CA					CMP				RCX, RDX					
+ 00000007  48/ 3B CA					CMP				RCX, RDX
  0000000A  0F 84 000000C7				JE				shr_u_ret					; destination is the same as the source: no copy needed
 							Copy512			RCX, RDX					; no shift, just copy (destination, source already in regs)
  00000010  62 61 FD 48/ 6F   1				VMOVDQA64		ZMM31, ZM_PTR [ RDX ]
@@ -327,9 +328,7 @@ ui512b.asm						     Page 1 - 1
 				;			Word shifts:
  00000063  66| 41/ C1 E8				SHR				R8W, 6
 	   06
-						;	CMP				R8W, 0
-						;	JE				store_exit		
- 00000068  74 67				JZ			store_exit
+ 00000068  74 67					JZ				store_exit
  0000006A  66| 41/ 83 F8				CMP				R8W, 1
 	   01
  0000006F  75 09					JNE				test2ws
@@ -671,7 +670,7 @@ ui512b.asm						     Page 1 - 1
  00000350			lsb_u		ENDP
 
 							END
-Microsoft (R) Macro Assembler (x64) Version 14.40.33811.0   06/15/24 13:59:52
+Microsoft (R) Macro Assembler (x64) Version 14.40.33811.0   06/16/24 17:18:12
 ui512b.asm						     Symbols 2 - 1
 
 

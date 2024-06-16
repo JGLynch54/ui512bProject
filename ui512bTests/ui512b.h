@@ -10,25 +10,30 @@ extern "C"
 
 	//	Procedures from ui512b.asm module:
 
-	void shr_u ( u64* destination, u64* source, u32 bits_to_shift );
+	// void shr_u ( u64* destination, u64* source, u32 bits_to_shift );
 	// shift supplied source 512bit (8 QWORDS) right, put in destination
 	// EXTERNDEF	shr_u : PROC
+	void shr_u ( u64*, u64*, u32 );
 
-	void shl_u ( u64* destination, u64* source, u16 bits_to_shift );
+	// void shl_u ( u64* destination, u64* source, u16 bits_to_shift );
 	// shift supplied source 512bit (8 QWORDS) left, put in destination
 	// EXTERNDEF	shl_u : PROC
+	void shl_u ( u64*, u64*, u16 );
 
-	void and_u ( u64* destination, u64* lh_op, u64* rh_op );
+	// void and_u ( u64* destination, u64* lh_op, u64* rh_op );
 	// logical 'AND' bits in lh_op, rh_op, put result in destination
 	// EXTERNDEF	and_u : PROC
+	void and_u ( u64*, u64*, u64* );
 
-	void or_u ( u64* destination, u64* lh_op, u64* rh_op );
+	// void or_u ( u64* destination, u64* lh_op, u64* rh_op );
 	// logical 'OR' bits in lh_op, rh_op, put result in destination	
 	// EXTERNDEF	or_u : PROC
+	void or_u ( u64*, u64*, u64* );
 
-	;	void not_u ( u64* destination, u64* source );
+	// void not_u ( u64* destination, u64* source );
 	// logical 'NOT' bits in source, put result in destination
 	// EXTERNDEF	not_u : PROC
+	void not_u ( u64*, u64* );
 
 	s16 msb_u ( u64* );
 	// find most significant bit in supplied source 512bit (8 QWORDS)
