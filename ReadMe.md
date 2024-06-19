@@ -1,20 +1,20 @@
 Project Description
 
 	ui512 is a small project to provide basic operations for a variable type of unsigned 512 bit integer.
-	The basic operations in the module ui512a are: zero, copy, compare, add, subtract.
+	The basic operations: zero, copy, compare, add, subtract.
     Other optional modules provide bit ops and multiply / divide.
-	It is written in assembly language, using the MASM (ml64) assembler provided as an option within 
-    Visual Studio (currently using VS Community 2022 17.9.6).
-	It provides external signatures that allow linkage to C and C++ programs, where a shell/wrapper
-    could encapsulate the methods as part of an object.
-	It has assembly time options directing the use of Intel processor extensions:
-    AVX4, AVX2, SIMD, or none: (Z (512), Y (256), or X (128) registers, or regular Q (64bit))
-	If processor extensions are used, the caller must align the variables declared and passed on the 
-    appropriate byte boundary (e.g. alignas 64 for 512)
-	This module is very light-weight (less than 1K bytes) and relatively fast, but is not intended
-    for all processor types or all environments. 
-	Use for private (hobbyist), or instructional, or as an example for more ambitious projects is
-    all it is meant to be.
+	It is written in assembly language, using the MASM (ml64) assembler provided as an option within Visual Studio.
+	(currently using VS Community 2022 17.9.6)
+	It provides external signatures that allow linkage to C and C++ programs,
+	where a shell/wrapper could encapsulate the methods as part of an object.
+	It has assembly time options directing the use of Intel processor extensions: AVX4, AVX2, SIMD, or none:
+	(Z (512), Y (256), or X (128) registers, or regular Q (64bit)).
+	If processor extensions are used, the caller must align the variables declared and passed
+	on the appropriate byte boundary (e.g. alignas 64 for 512)
+	This module is very light-weight (less than 1K bytes) and relatively fast,
+	but is not intended for all processor types or all environments. 
+	Use for private (hobbyist), or instructional,
+	or as an example for more ambitious projects is all it is meant to be.
 
 	ui512b provides basic bit-oriented operations: shift left, shift right, and, or, not,
     least significant bit and most significant bit.
@@ -77,7 +77,7 @@ Usage Guidelines
 
 		In solution explorer, right click on the project name. Select "Open Folder in File Explorer"
 		In file explorer, navigate to project name, x64, debug.
-		Double click on ui512a.cod (your assembled code listing)
+		Double click on ui512b.cod (your assembled code listing)
 
 	Your .lib file is ready to be included in whatever project. It is under your project file directory,
 	x64, debug, projectname.lib

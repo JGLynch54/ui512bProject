@@ -1,5 +1,41 @@
+//		ui512bTests
+// 
+//		File:			ui512bTests.cpp
+//		Author:			John G.Lynch
+//		Legal:			Copyright @2024, per MIT License below
+//		Date:			June 11, 2024
+//
+//		ui512 is a small project to provide basic operations for a variable type of unsigned 512 bit integer.
+//		The basic operations : zero, copy, compare, add, subtract.
+//		Other optional modules provide bit ops and multiply / divide.
+//		It is written in assembly language, using the MASM ( ml64 ) assembler provided as an option within Visual Studio.
+//		( currently using VS Community 2022 17.9.6 )
+//		It provides external signatures that allow linkage to C and C++ programs,
+//		where a shell / wrapper could encapsulate the methods as part of an object.
+//		It has assembly time options directing the use of Intel processor extensions : AVX4, AVX2, SIMD, or none :
+//		( Z ( 512 ), Y ( 256 ), or X ( 128 ) registers, or regular Q ( 64bit ) ).
+//		If processor extensions are used, the caller must align the variables declared and passed
+//		on the appropriate byte boundary ( e.g. alignas 64 for 512 )
+//		This module is very light - weight ( less than 1K bytes ) and relatively fast,
+//		but is not intended for all processor types or all environments.
+//		Use for private ( hobbyist ), or instructional,
+//		or as an example for more ambitious projects is all it is meant to be.
+// 
+// 		ui512b provides basic bit-oriented operations: shift left, shift right, and, or, not,
+//		least significant bit and most significant bit.
+//
+//		This sub - project: ui512aTests, is a unit test project that invokes each of the routines in the ui512a assembly.
+//		It runs each assembler proc with pseudo - random values.
+//		It validates ( asserts ) expected and returned results.
+//		It also runs each repeatedly for comparative timings.
+//		It provides a means to invoke and debug.
+//		It illustrates calling the routines from C++.
+
 #include "pch.h"
 #include "CppUnitTest.h"
+
+#include <format>
+
 #include "ui512b.h"
 
 using namespace std;
@@ -19,7 +55,7 @@ namespace ui512bTests
 		/// uses linear congruential method 
 		/// ref: Knuth, Art Of Computer Programming, Vol. 2, Seminumerical Algorithms, 3rd Ed. Sec 3.2.1
 		/// </summary>
-		/// <param name="seed">if zero will supply with: 4294967291</param>
+		/// <param name="seed">if zero, will supply with: 4294967291</param>
 		/// <returns>Pseudo-random number from zero to ~2^63 (9223372036854775807)</returns>
 		u64 RandomU64 ( u64* seed )
 		{
@@ -27,34 +63,48 @@ namespace ui512bTests
 			const u64 a = 68719476721ull;					// closest prime below 2^36
 			const u64 c = 268435399ull;						// closest prime below 2^28
 			// suggested seed: around 2^32, 4294967291
-			// linear congruential method (ref: Knuth, Art Of Computer Programming, Vol. 2, Seminumerical Algorithms, 3rd Ed. Sec 3.2.1
 			*seed = ( *seed == 0ull ) ? ( a * 4294967291ull + c ) % m : ( a * *seed + c ) % m;
 			return *seed;
 		};
 
 		TEST_METHOD ( random_number_generator )
 		{
+			//	Check distibution of "random" numbers
 			u64 seed = 0;
-			u32 dist [ 10 ] { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
-			const u64 split = 9223372036854775807ull / 10;
+			const u32 dec = 10;
+			u32 dist [ dec ] { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+			const u64 split = 9223372036854775807ull / dec;
 			u32 distc = 0;
-			const u32 randomcount = 100000;
-
+			float deviation = 0.0;
+			float varience = 0.0;
+			const u32 randomcount = 1000000;
+			const s32 norm = randomcount / dec;
 			for ( u32 i = 0; i < randomcount; i++ )
 			{
 				seed = RandomU64 ( &seed );
 				dist [ u64 ( seed / split ) ]++;
 			};
 
-			string msgd = "\nDistribution of ( " + to_string ( randomcount ) + " ) pseudo-random numbers by deciles:\n";
+			string msgd = "Evaluation of pseudo-random number generator.\n\n";
+			msgd += format ( "Generated {0:*>8} numbers.\n", randomcount );
+			msgd += format ( "Counted occurances of those numbers by decile, each decile {0:*>20}.\n", split );
+			msgd += format ( "Distribution of numbers accross the deciles indicates the quality of the generator.\n\n" );
+			msgd += "Distribution by decile:";
+			string msgv = "Variance from mean:\t";
+
 			for ( int i = 0; i < 10; i++ )
 			{
-				msgd += to_string ( dist [ i ] ) + " ";
+				deviation = float ( abs ( long ( norm ) - long ( dist [ i ] ) ) );
+				varience = float ( deviation ) / float ( norm ) * 100.0f;
+				msgd += format ( "\t{:6d}", dist [ i ] );
+				msgv += format ( "\t{:5.3f}% ", varience );
 				distc += dist [ i ];
 			};
 
-			msgd += " summing to " + to_string ( distc ) + "\n";
+			msgd += "\t\tDecile counts sum to: " + to_string ( distc ) + "\n";
 			Logger::WriteMessage ( msgd.c_str ( ) );
+			msgv += '\n';
+			Logger::WriteMessage ( msgv.c_str ( ) );
 		};
 
 		TEST_METHOD ( ui512bits_01_shr )
