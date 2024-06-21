@@ -1,4 +1,4 @@
-Microsoft (R) Macro Assembler (x64) Version 14.40.33811.0   06/19/24 14:16:29
+Microsoft (R) Macro Assembler (x64) Version 14.40.33811.0   06/21/24 11:39:36
 ui512b.asm						     Page 1 - 1
 
 
@@ -670,7 +670,7 @@ ui512b.asm						     Page 1 - 1
  00000350			lsb_u		ENDP
 
 							END
-Microsoft (R) Macro Assembler (x64) Version 14.40.33811.0   06/19/24 14:16:29
+Microsoft (R) Macro Assembler (x64) Version 14.40.33811.0   06/21/24 11:39:36
 ui512b.asm						     Symbols 2 - 1
 
 
