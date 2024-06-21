@@ -1,4 +1,4 @@
-Microsoft (R) Macro Assembler (x64) Version 14.40.33811.0   06/21/24 11:39:36
+Microsoft (R) Macro Assembler (x64) Version 14.40.33811.0   06/21/24 18:18:01
 ui512b.asm						     Page 1 - 1
 
 
@@ -389,19 +389,20 @@ ui512b.asm						     Page 1 - 1
 				;			bits		-	Number of bits to shift. Will fill with zeros, truncate those shifted out (in R8W)
 				;			returns		-	nothing (0)
  000000D8			shl_u		PROC			PUBLIC
- 000000D8  41/ 83 F8 00					CMP				R8D, 0						; handle edge case, shift zero bits
- 000000DC  75 1A					JNE				notzero
- 000000DE  48/ 3B CA					CMP				RCX, RDX
- 000000E1  0F 84 000001BE				JE				shl_u_ret
+ 000000D8  66| 41/ 83 F8				CMP				R8W, 0						; handle edge case, shift zero bits
+	   00
+ 000000DD  75 1A					JNE				notzero
+ 000000DF  48/ 3B CA					CMP				RCX, RDX
+ 000000E2  0F 84 000001BD				JE				shl_u_ret
 							Copy512			RCX, RDX					; no shift, just copy (destination, source already in regs)
- 000000E7  62 61 FD 48/ 6F   1				VMOVDQA64		ZMM31, ZM_PTR [ RDX ]
+ 000000E8  62 61 FD 48/ 6F   1				VMOVDQA64		ZMM31, ZM_PTR [ RDX ]
 	   3A
- 000000ED  62 61 FD 48/ 7F   1				VMOVDQA64		ZM_PTR [ RCX ], ZMM31
+ 000000EE  62 61 FD 48/ 7F   1				VMOVDQA64		ZM_PTR [ RCX ], ZMM31
 	   39
- 000000F3  E9 000001AD					JMP				shl_u_ret
- 000000F8			notzero:
- 000000F8  41/ 81 F8					CMP				R8D, 512					; handle edge case, shift 512 or more bits
-	   00000200
+ 000000F4  E9 000001AC					JMP				shl_u_ret
+ 000000F9			notzero:
+ 000000F9  66| 41/ 81 F8				CMP				R8W, 512					; handle edge case, shift 512 or more bits
+	   0200
  000000FF  7C 11					JL				not512
 							Zero512			RCX							; zero destination
  00000101  62 01 85 40/ EF   1				VPXORQ			ZMM31, ZMM31, ZMM31
@@ -670,7 +671,7 @@ ui512b.asm						     Page 1 - 1
  00000350			lsb_u		ENDP
 
 							END
-Microsoft (R) Macro Assembler (x64) Version 14.40.33811.0   06/21/24 11:39:36
+Microsoft (R) Macro Assembler (x64) Version 14.40.33811.0   06/21/24 18:18:01
 ui512b.asm						     Symbols 2 - 1
 
 
@@ -708,7 +709,7 @@ msb_u  . . . . . . . . . . . . .	P 	 000002E3 _TEXT	Length= 00000039 Public
 not_u  . . . . . . . . . . . . .	P 	 000002CC _TEXT	Length= 00000017 Public
 or_u . . . . . . . . . . . . . .	P 	 000002B9 _TEXT	Length= 00000013 Public
 shl_u  . . . . . . . . . . . . .	P 	 000000D8 _TEXT	Length= 000001CE Public
-  notzero  . . . . . . . . . . .	L 	 000000F8 _TEXT	
+  notzero  . . . . . . . . . . .	L 	 000000F9 _TEXT	
   not512 . . . . . . . . . . . .	L 	 00000112 _TEXT	
   shiftwords . . . . . . . . . .	L 	 00000139 _TEXT	
   wsf1 . . . . . . . . . . . . .	L 	 0000014C _TEXT	

@@ -315,14 +315,14 @@ shr_u		ENDP
 ;			bits		-	Number of bits to shift. Will fill with zeros, truncate those shifted out (in R8W)
 ;			returns		-	nothing (0)
 shl_u		PROC			PUBLIC
-			CMP				R8D, 0						; handle edge case, shift zero bits
+			CMP				R8W, 0						; handle edge case, shift zero bits
 			JNE				notzero
 			CMP				RCX, RDX
 			JE				shl_u_ret
 			Copy512			RCX, RDX					; no shift, just copy (destination, source already in regs)
 			JMP				shl_u_ret
 notzero:
-			CMP				R8D, 512					; handle edge case, shift 512 or more bits
+			CMP				R8W, 512					; handle edge case, shift 512 or more bits
 			JL				not512
 			Zero512			RCX							; zero destination
 			JMP				shl_u_ret
