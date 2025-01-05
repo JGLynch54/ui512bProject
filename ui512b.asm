@@ -72,62 +72,62 @@ aligned64   ENDS
 
 shr_u		PROC			PUBLIC
 			CMP				R8W, 0						; handle edge case, shift zero bits
-			JNE				notzero
+			JNE				@F
 			CMP				RCX, RDX
-			JE				shr_u_ret					; destination is the same as the source: no copy needed
+			JE				@@shr_u_ret					; destination is the same as the source: no copy needed
 			Copy512			RCX, RDX					; no shift, just copy (destination, source already in regs)
-			JMP				shr_u_ret
-notzero:
+			JMP				@@shr_u_ret
+@@:
 			CMP				R8W, 512					; handle edge case, shift 512 or more bits
-			JL				lt512
+			JL				@F
 			Zero512			RCX							; zero destination
-			JMP				shr_u_ret
-lt512:
+			JMP				@@shr_u_ret
+@@:
 	IF		__UseZ
 			VMOVDQA64		ZMM31, ZM_PTR [ RDX ]		; load the 8 qwords into zmm reg (note: word order)
 			MOV				AX, R8W
 			AND				AX, 63
-			JZ				nobits						; must be multiple of 64 bits to shift, no bits, just words to shift
+			JZ				@F							; must be multiple of 64 bits to shift, no bits, just words to shift
 			VPBROADCASTQ	ZMM29, RAX					; Nr bits to shift right
 			VPXORQ			ZMM28, ZMM28, ZMM28			; 
 			VALIGNQ			ZMM30, ZMM31, ZMM28, 7		; shift copy of words left one word (to get low order bits aligned for shift)
 			VPSHRDVQ		ZMM31, ZMM30, ZMM29			; shift, concatentating low bits of next word with each word to shift in
-nobits:
+@@:
 ;			Word shifts:
 			SHR				R8W, 6
-			JZ				store_exit
+			JZ				@@E
 			CMP				R8W, 1
-			JNE				test2ws
+			JNE				@F
 			VALIGNQ			ZMM31, ZMM31, ZMM28, 7
-			JMP				store_exit
-test2ws:
+			JMP				@@E
+@@:
 			CMP				R8W, 2
-			JNE				test3ws
+			JNE				@F
 			VALIGNQ			ZMM31, ZMM31, ZMM28, 6
-			JMP				store_exit
-test3ws:
+			JMP				@@E
+@@:
 			CMP				R8W, 3
-			JNE				test4ws
+			JNE				@F
 			VALIGNQ			ZMM31, ZMM31, ZMM28, 5
-			JMP				store_exit
-test4ws:
+			JMP				@@E
+@@:
 			CMP				R8W, 4
-			JNE				test5ws
+			JNE				@F
 			VALIGNQ			ZMM31, ZMM31, ZMM28, 4
-			JMP				store_exit
-test5ws:
+			JMP				@@E
+@@:
 			CMP				R8W, 5
-			JNE				test6ws
+			JNE				@F
 			VALIGNQ			ZMM31, ZMM31, ZMM28, 3
-			JMP				store_exit
-test6ws:
+			JMP				@@E
+@@:
 			CMP				R8W, 6
-			JNE				shift7ws
+			JNE				@F
 			VALIGNQ			ZMM31, ZMM31, ZMM28, 2
-			JMP				store_exit
-shift7ws:
+			JMP				@@E
+@@:
 			VALIGNQ			ZMM31, ZMM31, ZMM28, 1
-store_exit:
+@@E:
 			VMOVDQA64		ZM_PTR [ RCX ], ZMM31
 	ELSE
 ;	save non-volitile regs to be used as work regs			
@@ -147,21 +147,28 @@ store_exit:
 			MOV				R15, [RDX + 6 * 8]
 			MOV				RDI, [RDX + 7 * 8]
 ;	determine if / how many words to shift
+			MOV				CX, R8W
+			AND				CX, 03fh
+			JZ				@@nobits
 			MOV				AX, 64
-			SUB				AX, R8W
+			SUB				AX, CX
 			XOR				RCX, RCX
 			MOV				CL, AL						; CL left shift Nr
 			XCHG			CL, CH
 			MOV				CL, R8B						; CH right shift Nr
 			XCHG			CL, CH
-			;
-			MOV				RDX, R15
-			SHL				RDX, CL
-			XCHG			CH, CL
-			SHR				RDI, CL
-			XCHG			CH, CL
-			OR				RDI, RDX
-			;
+;
+;	Each word is shifted right, and the bits falling out are ORd into the next word.
+;	CL holds the number of bits to shift right, CH holds the complement for left shift.
+;	The CL register is used for the bit shift number, it is "XCHG" swapped with CH for the left or right shift
+;
+			MOV				RDX, R15					; Get the sixth word (of 0 to 7)
+			SHL				RDX, CL						; shift it left by 64 - bits to shift, putting last bits at high end of register
+			XCHG			CH, CL						; switch CL from bits to shift left, to bits to shift right
+			SHR				RDI, CL						; Shift the seventh (of 0 to 7) word right, truncating "bottom" bits
+			XCHG			CH, CL						; restore CL to the left shift number
+			OR				RDI, RDX					; "OR" in the high bits from the 6th word into the shifted seventh word
+			;  . . . repeat for each word . . 
 			MOV				RDX, R14
 			SHL				RDX, CL
 			XCHG			CH, CL
@@ -202,13 +209,15 @@ store_exit:
 			XCHG			CH, CL
 			SHR				R10, CL
 			OR				R10, RDX
-			;
+			; no bits to OR in on the index 0 (high order) word, just shift it.
 			SHR				R9, CL
+@@nobits:
+			; with the bitss shifted within the words, if the dessired shift is more than 64 bits, word shifts are required
 			MOV				AX, R8W
 			SHR				AX, 6
-			CMP				AX, 0						; no word shift, just bits
+			CMP				AX, 0						
 			POP				RCX
-			JNE				test1ws
+			JNE				@F							; no word shift, just bits
 			MOV				[RCX + 0 * 8], R9
 			MOV				[RCX + 1 * 8], R10
 			MOV				[RCX + 2 * 8], R11
@@ -217,9 +226,9 @@ store_exit:
 			MOV				[RCX + 5 * 8], R14
 			MOV				[RCX + 6 * 8], R15
 			MOV				[RCX + 7 * 8], RDI	
-			JMP				restore_exit
-test1ws:	CMP				AX, 1						; one word shift
-			JNE				test2ws
+			JMP				@@R
+@@:			CMP				AX, 1						; one word shift
+			JNE				@F
 			XOR				RAX, RAX
 			MOV				[RCX + 0 * 8], RAX
 			MOV				[RCX + 1 * 8], R9
@@ -229,9 +238,9 @@ test1ws:	CMP				AX, 1						; one word shift
 			MOV				[RCX + 5 * 8], R13
 			MOV				[RCX + 6 * 8], R14
 			MOV				[RCX + 7 * 8], R15	
-			JMP				restore_exit
-test2ws:	CMP				AX, 2						; two word shift
-			JNE				test3ws
+			JMP				@@R
+@@:			CMP				AX, 2						; two word shift
+			JNE				@F
 			XOR				RAX, RAX
 			MOV				[RCX + 0 * 8], RAX
 			MOV				[RCX + 1 * 8], RAX
@@ -241,9 +250,10 @@ test2ws:	CMP				AX, 2						; two word shift
 			MOV				[RCX + 5 * 8], R12
 			MOV				[RCX + 6 * 8], R13
 			MOV				[RCX + 7 * 8], R14	
-			JMP				restore_exit
-test3ws:	CMP				AX, 3						; three word shift
-			JNE				test4ws
+			JMP				@@R
+@@:			CMP				AX, 3						; three word shift
+			JNE				@F
+			XOR				RAX, RAX
 			MOV				[RCX + 0 * 8], RAX
 			MOV				[RCX + 1 * 8], RAX
 			MOV				[RCX + 2 * 8], RAX
@@ -252,9 +262,10 @@ test3ws:	CMP				AX, 3						; three word shift
 			MOV				[RCX + 5 * 8], R11
 			MOV				[RCX + 6 * 8], R12
 			MOV				[RCX + 7 * 8], R13	
-			JMP				restore_exit
-test4ws:	CMP				AX, 4						; four word shift
-			JNE				test5ws
+			JMP				@@R
+@@:			CMP				AX, 4						; four word shift
+			JNE				@F
+			XOR				RAX, RAX
 			MOV				[RCX + 0 * 8], RAX
 			MOV				[RCX + 1 * 8], RAX
 			MOV				[RCX + 2 * 8], RAX
@@ -263,9 +274,10 @@ test4ws:	CMP				AX, 4						; four word shift
 			MOV				[RCX + 5 * 8], R10
 			MOV				[RCX + 6 * 8], R11
 			MOV				[RCX + 7 * 8], R12	
-			JMP				restore_exit
-test5ws:	CMP				AX, 5						; five word shift
-			JNE				test6ws
+			JMP				@@R
+@@:			CMP				AX, 5						; five word shift
+			JNE				@F
+			XOR				RAX, RAX
 			MOV				[RCX + 0 * 8], RAX
 			MOV				[RCX + 1 * 8], RAX
 			MOV				[RCX + 2 * 8], RAX
@@ -274,9 +286,10 @@ test5ws:	CMP				AX, 5						; five word shift
 			MOV				[RCX + 5 * 8], R9
 			MOV				[RCX + 6 * 8], R10
 			MOV				[RCX + 7 * 8], R11	
-			JMP				restore_exit
-test6ws:	CMP				AX, 6						; six word shift
-			JNE				test7ws
+			JMP				@@R
+@@:			CMP				AX, 6						; six word shift
+			JNE				@F
+			XOR				RAX, RAX
 			MOV				[RCX + 0 * 8], RAX
 			MOV				[RCX + 1 * 8], RAX
 			MOV				[RCX + 2 * 8], RAX
@@ -285,8 +298,9 @@ test6ws:	CMP				AX, 6						; six word shift
 			MOV				[RCX + 5 * 8], RAX
 			MOV				[RCX + 6 * 8], R9
 			MOV				[RCX + 7 * 8], R10	
-			JMP				restore_exit
-test7ws:												; seven word shift
+			JMP				@@R
+@@:														; seven word shift
+			XOR				RAX, RAX
 			MOV				[RCX + 0 * 8], RAX
 			MOV				[RCX + 1 * 8], RAX
 			MOV				[RCX + 2 * 8], RAX
@@ -296,7 +310,7 @@ test7ws:												; seven word shift
 			MOV				[RCX + 6 * 8], RAX
 			MOV				[RCX + 7 * 8], R9	
 		
-restore_exit:
+@@R:
 ;	restore non-volitile regs to as-called condition
 			POP				RDI
 			POP				R15
@@ -304,7 +318,7 @@ restore_exit:
 			POP				R13
 			POP				R12
 	ENDIF
-shr_u_ret:
+@@shr_u_ret:
 			RET		
 shr_u		ENDP			
 
@@ -316,17 +330,17 @@ shr_u		ENDP
 ;			returns		-	nothing (0)
 shl_u		PROC			PUBLIC
 			CMP				R8W, 0						; handle edge case, shift zero bits
-			JNE				notzero
+			JNE				@F
 			CMP				RCX, RDX
 			JE				shl_u_ret
 			Copy512			RCX, RDX					; no shift, just copy (destination, source already in regs)
 			JMP				shl_u_ret
-notzero:
+@@:
 			CMP				R8W, 512					; handle edge case, shift 512 or more bits
-			JL				not512
+			JL				@F
 			Zero512			RCX							; zero destination
 			JMP				shl_u_ret
-not512:
+@@:
 ;	copy source to destination, offsetting words if Nr to shift / 64 > 0
 			PUSH			RCX
 			PUSH			R9
@@ -338,65 +352,65 @@ not512:
 			MOV				AX, R8W				
 			SHR				RAX, 6						; divide shift count by 64 giving word shift count (retain orig count in 8)
 			CMP				RAX, 0
-			JNE				shiftwords
+			JNE				@F
 			CMP				R11, RDX
 			JE				destsrcsame
-shiftwords:
+@@:
 			MOV				RCX, RAX					; word shift counter to RCX
 			XOR				RAX, RAX
 			CMP				RCX, 7
-			JG				wsf1						; > 7? 
+			JG				@F						; > 7? 
 			MOV				RAX, [RDX + RCX * 8]		; get offset word
 			INC				RCX
-wsf1:		MOV				[R11 + 0 * 8], RAX			; move it (or zero) to first 
+@@:			MOV				[R11 + 0 * 8], RAX			; move it (or zero) to first 
 			XOR				RAX, RAX
 			CMP				RCX, 7
-			JG				wsf2
+			JG				@F
 			MOV				RAX, [RDX + RCX * 8]
 			INC				RCX
-wsf2:		MOV				[R11 + 1 * 8], RAX
+@@:			MOV				[R11 + 1 * 8], RAX
 			XOR				RAX, RAX
 			CMP				RCX, 7
-			JG				wsf3
+			JG				@F
 			MOV				RAX, [RDX + RCX * 8]
 			INC				RCX
-wsf3:		MOV				[R11 + 2 * 8], RAX
+@@:			MOV				[R11 + 2 * 8], RAX
 			XOR				RAX, RAX
 			CMP				RCX, 7
-			JG				wsf4
+			JG				@F
 			MOV				RAX, [RDX + RCX * 8]
 			INC				RCX
-wsf4:		MOV				[R11 + 3 * 8], RAX
+@@:			MOV				[R11 + 3 * 8], RAX
 			XOR				RAX, RAX
 			CMP				RCX, 7
-			JG				wsf5
+			JG				@F
 			MOV				RAX, [RDX + RCX * 8]
 			INC				RCX
-wsf5:       MOV				[R11 + 4 * 8], RAX
+@@:		    MOV				[R11 + 4 * 8], RAX
 			XOR				RAX, RAX
 			CMP				RCX, 7
-			JG				wsf6
+			JG				@F
 			MOV				RAX, [RDX + RCX * 8]
 			INC				RCX
-wsf6:		MOV				[R11 + 5 * 8], RAX
+@@:			MOV				[R11 + 5 * 8], RAX
 			XOR				RAX, RAX
 			CMP				RCX, 7
-			JG				wsf7
+			JG				@F
 			MOV				RAX, [RDX + RCX * 8]
 			INC				RCX
-wsf7:		MOV				[R11 + 6 * 8], RAX
+@@:			MOV				[R11 + 6 * 8], RAX
 			XOR				RAX, RAX
 			CMP				RCX, 7
-			JG				wsf8
+			JG				@F
 			MOV				RAX, [RDX + RCX * 8]
-wsf8:		MOV				[R11 + 7 * 8], RAX
+@@:			MOV				[R11 + 7 * 8], RAX
 destsrcsame:
 
 ; RCX: needed for cl shift counts; use RAX for load/store/shift, RDX for shift/save, R9 for counter/index, r10 bits left (exch with rcx for bits right), R11 for destination
 			MOV				RCX, 03Fh					; mask for last six bits of shift counter
 			AND				CX, R8W						; passed bit count, now in RCX, ECX, CX, and CL how many bits to shift right
 			CMP				CX, 0
-			JE				nobitstoshift				; 
+			JE				@F				; 
 			MOV				R10, 64
 			SUB				R10, RCX					; 64 - bit shift count (bits at high end of word that survive the shift) XCHG r10, RCX to use CL as shift count
 
@@ -457,7 +471,7 @@ destsrcsame:
 			SHL				Q_PTR [R11 + 0 * 8], CL		; eigth word shifted 
 			OR				Q_PTR [R11 + 0 * 8], RAX	; and low bits ORd in	
 			
-nobitstoshift:
+@@:
 			POP				R11							; restore regs to "as-called" values
 			POP				R10
 			POP				R9
@@ -594,7 +608,7 @@ or_u		ENDP
 not_u		PROC			PUBLIC
 	IF		__UseZ	
 			VMOVDQA64		ZMM31, ZM_PTR [RDX]			
-			VPANDNQ			ZMM31, ZMM31, qOnes
+			VPANDNQ			ZMM31, ZMM31, qOnes			; qOnes (declared in this module, in the data section) is 8 QWORDS, binary all ones
 			VMOVDQA64		ZM_PTR [RCX], ZMM31
 	ELSEIF	__UseY
 			VMOVDQA64		YMM4, YM_PTR [ RDX ] + [ 0 * 8 ]
@@ -652,24 +666,23 @@ not_u		ENDP
 			OPTION			PROLOGUE:none
 			OPTION			EPILOGUE:none
 msb_u		PROC			PUBLIC
-			PUSH			R9
+			PUSH			R9							; Save (and later restore) R9, R10
 			PUSH			R10
-			XOR				R10, R10
-			MOV				R10D, -1
-again:
+			MOV				R10, -1						; Initialize loop counter (and index)
+@@NextWord:
 			INC				R10D
 			CMP				R10D, 8
-			JNZ				chkbits
+			JNZ				@F							; Loop through values 0 to 7, then exit
 			MOV				EAX, -1
-			JMP				rret
-chkbits:
-			BSR				RAX, [ RCX ]  + [ R10 * 8 ]
-			JZ				again
+			JMP				@@Finished
+@@:
+			BSR				RAX, [ RCX ]  + [ R10 * 8 ]	; Reverse Scan indexed word for significant bit
+			JZ				@@NextWord					; None found, loop to next word
 			MOV				R11D, 7
-			SUB				R11D, R10D
-			SHL				R11D, 6
-			ADD				EAX, R11D
-rret:
+			SUB				R11D, R10D					; calculate seven minus the word index (which word has the msb?)
+			SHL				R11D, 6						; times 64 for each word
+			ADD				EAX, R11D					; plus the BSR found bit position within the word yields the bit position within the 512 bit source
+@@Finished:
 			POP				R10
 			POP				R9
 			RET		
@@ -682,22 +695,22 @@ msb_u		ENDP
 			OPTION			PROLOGUE:none
 			OPTION			EPILOGUE:none
 lsb_u		PROC			PUBLIC
-			PUSH			R9
+			PUSH			R9							; Save (and later restore) R9, R10
 			PUSH			R10
-			MOV				R10, 8
-again:
-			SUB				R10D, 1
-			JNC				chkbits
+			MOV				R10, 8						; Initialize loop counter (and index)
+@@NextWord:
+			DEC				R10
+			JNC				@F							; Loop through values 7 to 0, then exit
 			MOV				EAX, -1
-			JMP				lret
-chkbits:
-			BSF				RAX, [ RCX ] + [ R10 * 8 ]
-			JZ				again
-			MOV				R11D, 7
-			SUB				R11D, R10D
-			SHL				R11D, 6
-			ADD				EAX, R11D
-lret:
+			JMP				@@Finished
+@@:
+			BSF				RAX, [ RCX ] + [ R10 * 8 ]	; Scan indexed word for significant bit
+			JZ				@@NextWord					; None found, loop to next word
+			MOV				R11D, 7						;  
+			SUB				R11D, R10D					; calculate seven minus the word index (which word has the msb?)
+			SHL				R11D, 6						; times 64 for each word
+			ADD				EAX, R11D					; plus the BSF found bit position within the word yields the bit position within the 512 bit source
+@@Finished:
 			POP				R10
 			POP				R9
 			RET
