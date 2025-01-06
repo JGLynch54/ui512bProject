@@ -146,7 +146,7 @@ shr_u		PROC			PUBLIC
 			MOV				R14, [RDX + 5 * 8]
 			MOV				R15, [RDX + 6 * 8]
 			MOV				RDI, [RDX + 7 * 8]
-;	determine if / how many words to shift
+;	determine if / how many bits to shift
 			MOV				CX, R8W
 			AND				CX, 03fh
 			JZ				@@nobits
@@ -212,7 +212,7 @@ shr_u		PROC			PUBLIC
 			; no bits to OR in on the index 0 (high order) word, just shift it.
 			SHR				R9, CL
 @@nobits:
-			; with the bitss shifted within the words, if the dessired shift is more than 64 bits, word shifts are required
+			; with the bits shifted within the words, if the desired shift is more than 64 bits, word shifts are required
 			MOV				AX, R8W
 			SHR				AX, 6
 			CMP				AX, 0						
