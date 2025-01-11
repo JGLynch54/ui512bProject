@@ -1,6 +1,7 @@
 ;
 ;			ui512b
 ;
+;--------------------------------------------------------------------------------------------------------------------------------------------------------------
 ;			File:			ui512b.asm
 ;			Author:			John G. Lynch
 ;			Legal:			Copyright @2024, per MIT License below
@@ -8,24 +9,29 @@
 ;
 ;			Notes:
 ;				ui512 is a small project to provide basic operations for a variable type of unsigned 512 bit integer.
-;				The basic operations: zero, copy, compare, add, subtract.
-;               Other optional modules provide bit ops and multiply / divide.
+;
+;				ui512a provides basic operations: zero, copy, compare, add, subtract.
+;				ui512b provides basic bit-oriented operations: shift left, shift right, and, or, not, least significant bit and most significant bit.
+;               ui512md provides multiply and divide.
+;
 ;				It is written in assembly language, using the MASM (ml64) assembler provided as an option within Visual Studio.
 ;				(currently using VS Community 2022 17.9.6)
+;
 ;				It provides external signatures that allow linkage to C and C++ programs,
 ;				where a shell/wrapper could encapsulate the methods as part of an object.
+;
 ;				It has assembly time options directing the use of Intel processor extensions: AVX4, AVX2, SIMD, or none:
 ;				(Z (512), Y (256), or X (128) registers, or regular Q (64bit)).
+;
 ;				If processor extensions are used, the caller must align the variables declared and passed
 ;				on the appropriate byte boundary (e.g. alignas 64 for 512)
+;
 ;				This module is very light-weight (less than 1K bytes) and relatively fast,
 ;				but is not intended for all processor types or all environments. 
-;				Use for private (hobbyist), or instructional,
-;				or as an example for more ambitious projects is all it is meant to be.
 ;
-;				ui512b provides basic bit-oriented operations: shift left, shift right, and, or, not,
-;               least significant bit and most significant bit.
+;				Use for private (hobbyist), or instructional, or as an example for more ambitious projects is all it is meant to be.
 ;
+;--------------------------------------------------------------------------------------------------------------------------------------------------------------
 ;
 ;			MIT License
 ;
@@ -49,6 +55,8 @@
 ;				OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 ;				SOFTWARE.
 ;
+;--------------------------------------------------------------------------------------------------------------------------------------------------------------
+
 			INCLUDE			ui512aMacros.inc
 			INCLUDE			ui512bMacros.inc
 			OPTION			casemap:none
@@ -58,10 +66,11 @@ aligned64   SEGMENT         ALIGN (64)
 qOnes       QWORD           8 DUP (0ffffffffffffffffh)
 aligned64   ENDS
 
-.CODE
+.CODE		ui512b
             OPTION          PROLOGUE:none
             OPTION          EPILOGUE:none
 
+;--------------------------------------------------------------------------------------------------------------------------------------------------------------
 ;			shr_u		-	shift supplied source 512bit (8 QWORDS) right, put in destination
 ;			Prototype:		void shr_u( u64* destination, u64* source, u32 bits_to_shift)
 ;			destination	-	Address of 64 byte alligned array of 8 64-bit words (QWORDS) 512 bits (in RCX)
@@ -85,7 +94,7 @@ shr_u		PROC			PUBLIC
 @@:
 	IF		__UseZ
 			VMOVDQA64		ZMM31, ZM_PTR [ RDX ]		; load the 8 qwords into zmm reg (note: word order)
-			MOV				AX, R8W
+			MOVZX			RAX, R8W
 			AND				AX, 63
 			JZ				@F							; must be multiple of 64 bits to shift, no bits, just words to shift
 			VPBROADCASTQ	ZMM29, RAX					; Nr bits to shift right
@@ -93,42 +102,31 @@ shr_u		PROC			PUBLIC
 			VALIGNQ			ZMM30, ZMM31, ZMM28, 7		; shift copy of words left one word (to get low order bits aligned for shift)
 			VPSHRDVQ		ZMM31, ZMM30, ZMM29			; shift, concatentating low bits of next word with each word to shift in
 @@:
-;			Word shifts:
-			SHR				R8W, 6
-			JZ				@@E
-			CMP				R8W, 1
-			JNE				@F
-			VALIGNQ			ZMM31, ZMM31, ZMM28, 7
+; with the bits shifted within the words, if the desired shift is more than 64 bits, word shifts are required
+; verify Nr of word shift is zero to seven, use it as index into jump table; jump to appropriate shift
+			SHR				R8W, 6						; divide Nr bits to shift by 64 giving Nr words to shift
+			AND				R8, 07h						; probably not necessary, but ensures a number 0 to 7 for jump table
+			SHL				R8W, 3						; multiply by 8 to give QWORD index into jump table
+			LEA				RAX, @jt					; address of jump table
+			ADD				R8, RAX						; add index
+			JMP				Q_PTR [ R8 ]				; jump to routine that shifts the appropriate Nr words
+@jt:
+			QWORD			@@E, @1, @2, @3, @4, @5, @6, @7
+@1:			VALIGNQ			ZMM31, ZMM31, ZMM28, 7		; shifts words in 31 right 7, fills with zero, resulting seven plus filled zero to 31
 			JMP				@@E
-@@:
-			CMP				R8W, 2
-			JNE				@F
-			VALIGNQ			ZMM31, ZMM31, ZMM28, 6
+@2:			VALIGNQ			ZMM31, ZMM31, ZMM28, 6		; shifts words in 31 right 6, fills with two zeros, resulting 6 plus 2 filled zero to 31
 			JMP				@@E
-@@:
-			CMP				R8W, 3
-			JNE				@F
-			VALIGNQ			ZMM31, ZMM31, ZMM28, 5
+@3:			VALIGNQ			ZMM31, ZMM31, ZMM28, 5
 			JMP				@@E
-@@:
-			CMP				R8W, 4
-			JNE				@F
-			VALIGNQ			ZMM31, ZMM31, ZMM28, 4
+@4:			VALIGNQ			ZMM31, ZMM31, ZMM28, 4
 			JMP				@@E
-@@:
-			CMP				R8W, 5
-			JNE				@F
-			VALIGNQ			ZMM31, ZMM31, ZMM28, 3
+@5:			VALIGNQ			ZMM31, ZMM31, ZMM28, 3
 			JMP				@@E
-@@:
-			CMP				R8W, 6
-			JNE				@F
-			VALIGNQ			ZMM31, ZMM31, ZMM28, 2
+@6:			VALIGNQ			ZMM31, ZMM31, ZMM28, 2
 			JMP				@@E
-@@:
-			VALIGNQ			ZMM31, ZMM31, ZMM28, 1
-@@E:
-			VMOVDQA64		ZM_PTR [ RCX ], ZMM31
+@7:			VALIGNQ			ZMM31, ZMM31, ZMM28, 1
+
+@@E:		VMOVDQA64		ZM_PTR [ RCX ], ZMM31		; store result at callers destination
 	ELSE
 ;	save non-volitile regs to be used as work regs			
 			PUSH			R12
@@ -147,12 +145,11 @@ shr_u		PROC			PUBLIC
 			MOV				R15, [RDX + 6 * 8]
 			MOV				RDI, [RDX + 7 * 8]
 ;	determine if / how many bits to shift
-			MOV				CX, R8W
+			MOVZX			RCX, R8W
 			AND				CX, 03fh
 			JZ				@@nobits
 			MOV				AX, 64
 			SUB				AX, CX
-			XOR				RCX, RCX
 			MOV				CL, AL						; CL left shift Nr
 			XCHG			CL, CH
 			MOV				CL, R8B						; CH right shift Nr
@@ -213,11 +210,18 @@ shr_u		PROC			PUBLIC
 			SHR				R9, CL
 @@nobits:
 			; with the bits shifted within the words, if the desired shift is more than 64 bits, word shifts are required
-			MOV				AX, R8W
-			SHR				AX, 6
-			CMP				AX, 0						
-			POP				RCX
-			JNE				@F							; no word shift, just bits
+			; verify Nr of word shift is zero to seven, use it as index into jump table; jump to appropriate shift
+			SHR				R8W, 6
+			AND				R8, 07h 
+			SHL				R8W, 3
+			LEA				RAX, jtbl
+			ADD				R8, RAX
+			XOR				RAX, RAX					; clear rax for use as zeroing words shifted "in"
+			POP				RCX							; restore RCX, destination address
+			JMP				Q_PTR [ R8 ]
+jtbl:
+			QWORD			S0, S1, S2, S3, S4, S5, S6, S7
+S0:			; no word shift, just bits, so store words in destination in the same order as they are
 			MOV				[RCX + 0 * 8], R9
 			MOV				[RCX + 1 * 8], R10
 			MOV				[RCX + 2 * 8], R11
@@ -227,10 +231,8 @@ shr_u		PROC			PUBLIC
 			MOV				[RCX + 6 * 8], R15
 			MOV				[RCX + 7 * 8], RDI	
 			JMP				@@R
-@@:			CMP				AX, 1						; one word shift
-			JNE				@F
-			XOR				RAX, RAX
-			MOV				[RCX + 0 * 8], RAX
+
+S1:			MOV				[RCX + 0 * 8], RAX
 			MOV				[RCX + 1 * 8], R9
 			MOV				[RCX + 2 * 8], R10
 			MOV				[RCX + 3 * 8], R11
@@ -239,10 +241,8 @@ shr_u		PROC			PUBLIC
 			MOV				[RCX + 6 * 8], R14
 			MOV				[RCX + 7 * 8], R15	
 			JMP				@@R
-@@:			CMP				AX, 2						; two word shift
-			JNE				@F
-			XOR				RAX, RAX
-			MOV				[RCX + 0 * 8], RAX
+
+S2:			MOV				[RCX + 0 * 8], RAX
 			MOV				[RCX + 1 * 8], RAX
 			MOV				[RCX + 2 * 8], R9
 			MOV				[RCX + 3 * 8], R10
@@ -251,10 +251,8 @@ shr_u		PROC			PUBLIC
 			MOV				[RCX + 6 * 8], R13
 			MOV				[RCX + 7 * 8], R14	
 			JMP				@@R
-@@:			CMP				AX, 3						; three word shift
-			JNE				@F
-			XOR				RAX, RAX
-			MOV				[RCX + 0 * 8], RAX
+
+S3:			MOV				[RCX + 0 * 8], RAX
 			MOV				[RCX + 1 * 8], RAX
 			MOV				[RCX + 2 * 8], RAX
 			MOV				[RCX + 3 * 8], R9
@@ -263,22 +261,18 @@ shr_u		PROC			PUBLIC
 			MOV				[RCX + 6 * 8], R12
 			MOV				[RCX + 7 * 8], R13	
 			JMP				@@R
-@@:			CMP				AX, 4						; four word shift
-			JNE				@F
-			XOR				RAX, RAX
-			MOV				[RCX + 0 * 8], RAX
+
+S4:			MOV				[RCX + 0 * 8], RAX
 			MOV				[RCX + 1 * 8], RAX
 			MOV				[RCX + 2 * 8], RAX
 			MOV				[RCX + 3 * 8], RAX
 			MOV				[RCX + 4 * 8], R9
 			MOV				[RCX + 5 * 8], R10
 			MOV				[RCX + 6 * 8], R11
-			MOV				[RCX + 7 * 8], R12	
+			MOV				[RCX + 7 * 8], R12			
 			JMP				@@R
-@@:			CMP				AX, 5						; five word shift
-			JNE				@F
-			XOR				RAX, RAX
-			MOV				[RCX + 0 * 8], RAX
+
+S5:			MOV				[RCX + 0 * 8], RAX
 			MOV				[RCX + 1 * 8], RAX
 			MOV				[RCX + 2 * 8], RAX
 			MOV				[RCX + 3 * 8], RAX
@@ -287,10 +281,8 @@ shr_u		PROC			PUBLIC
 			MOV				[RCX + 6 * 8], R10
 			MOV				[RCX + 7 * 8], R11	
 			JMP				@@R
-@@:			CMP				AX, 6						; six word shift
-			JNE				@F
-			XOR				RAX, RAX
-			MOV				[RCX + 0 * 8], RAX
+
+S6:			MOV				[RCX + 0 * 8], RAX
 			MOV				[RCX + 1 * 8], RAX
 			MOV				[RCX + 2 * 8], RAX
 			MOV				[RCX + 3 * 8], RAX
@@ -299,17 +291,15 @@ shr_u		PROC			PUBLIC
 			MOV				[RCX + 6 * 8], R9
 			MOV				[RCX + 7 * 8], R10	
 			JMP				@@R
-@@:														; seven word shift
-			XOR				RAX, RAX
-			MOV				[RCX + 0 * 8], RAX
+
+S7:			MOV				[RCX + 0 * 8], RAX
 			MOV				[RCX + 1 * 8], RAX
 			MOV				[RCX + 2 * 8], RAX
 			MOV				[RCX + 3 * 8], RAX
 			MOV				[RCX + 4 * 8], RAX
 			MOV				[RCX + 5 * 8], RAX
 			MOV				[RCX + 6 * 8], RAX
-			MOV				[RCX + 7 * 8], R9	
-		
+			MOV				[RCX + 7 * 8], R9		
 @@R:
 ;	restore non-volitile regs to as-called condition
 			POP				RDI
@@ -322,12 +312,14 @@ shr_u		PROC			PUBLIC
 			RET		
 shr_u		ENDP			
 
+;--------------------------------------------------------------------------------------------------------------------------------------------------------------
 ;			shl_u		-	shift supplied source 512bit (8 QWORDS) left, put in destination
 ;			Prototype:		void shl_u( u64* destination, u64* source, u16 bits_to_shift);
 ;			destination	-	Address of 64 byte alligned array of 8 64-bit words (QWORDS) 512 bits (in RCX)
 ;			source		-	Address of 64 byte alligned array of 8 64-bit words (QWORDS) 512 bits (in RDX)
 ;			bits		-	Number of bits to shift. Will fill with zeros, truncate those shifted out (in R8W)
 ;			returns		-	nothing (0)
+
 shl_u		PROC			PUBLIC
 			CMP				R8W, 0						; handle edge case, shift zero bits
 			JNE				@F
@@ -341,145 +333,229 @@ shl_u		PROC			PUBLIC
 			Zero512			RCX							; zero destination
 			JMP				shl_u_ret
 @@:
-;	copy source to destination, offsetting words if Nr to shift / 64 > 0
+	IF		__UseZ
+			VMOVDQA64		ZMM31, ZM_PTR [ RDX ]		; load the 8 qwords into zmm reg (note: word order)
+			MOVZX			RAX, R8W
+			AND				AX, 63
+			JZ				@F							; must be multiple of 64 bits to shift, no bits, just words to shift
+;			Do the shift of bits within the 64 bit words
+			VPBROADCASTQ	ZMM29, RAX					; Nr bits to shift left
+			VPXORQ			ZMM28, ZMM28, ZMM28			; 
+			VALIGNQ			ZMM30, ZMM28, ZMM31, 1		; shift copy of words right one word (to get low order bits aligned for shift)
+			VPSHLDVQ		ZMM31, ZMM30, ZMM29			; shift, concatentating low bits of next word with each word to shift in
+@@:
+; with the bits shifted within the words, if the desired shift is more than 64 bits, word shifts are required
+; verify Nr of word shift is zero to seven, use it as index into jump table; jump to appropriate shift
+			SHR				R8W, 6						; divide Nr bits to shift by 64 giving Nr words to shift
+			AND				R8, 07h						; probably not necessary, but ensures a number 0 to 7 for jump table
+			SHL				R8W, 3						; multiply by 8 to give QWORD index into jump table
+			LEA				RAX, @jt					; address of jump table
+			ADD				R8, RAX						; add index
+			JMP				Q_PTR [ R8 ]				; jump to routine that shifts the appropriate Nr words
+@jt:
+			QWORD			@@E, @1, @2, @3, @4, @5, @6, @7
+;			Do the shifts of multiples of 64 bits (words)
+@1:			VALIGNQ			ZMM31, ZMM28, ZMM31, 1
+			JMP				@@E
+@2:			VALIGNQ			ZMM31, ZMM28, ZMM31, 2
+			JMP				@@E
+@3:			VALIGNQ			ZMM31, ZMM28, ZMM31, 3
+			JMP				@@E
+@4:			VALIGNQ			ZMM31, ZMM28, ZMM31, 4
+			JMP				@@E
+@5:			VALIGNQ			ZMM31, ZMM28, ZMM31, 5
+			JMP				@@E
+@6:			VALIGNQ			ZMM31, ZMM28, ZMM31, 6
+			JMP				@@E
+@7:			VALIGNQ			ZMM31, ZMM28, ZMM31, 7
+
+@@E:		VMOVDQA64		ZM_PTR [ RCX ], ZMM31
+	ELSE
+	;	save non-volitile regs to be used as work regs			
+			PUSH			R12
+			PUSH			R13
+			PUSH			R14
+			PUSH			R15
+			PUSH			RDI
 			PUSH			RCX
-			PUSH			R9
-			PUSH			R10
-			PUSH			R11
-			MOV				R11, RCX					; destination address moved/saved, free up C for word shift counter
-			XOR				RCX, RCX
-			XOR				RAX, RAX
-			MOV				AX, R8W				
-			SHR				RAX, 6						; divide shift count by 64 giving word shift count (retain orig count in 8)
-			CMP				RAX, 0
-			JNE				@F
-			CMP				R11, RDX
-			JE				destsrcsame
-@@:
-			MOV				RCX, RAX					; word shift counter to RCX
-			XOR				RAX, RAX
-			CMP				RCX, 7
-			JG				@F						; > 7? 
-			MOV				RAX, [RDX + RCX * 8]		; get offset word
-			INC				RCX
-@@:			MOV				[R11 + 0 * 8], RAX			; move it (or zero) to first 
-			XOR				RAX, RAX
-			CMP				RCX, 7
-			JG				@F
-			MOV				RAX, [RDX + RCX * 8]
-			INC				RCX
-@@:			MOV				[R11 + 1 * 8], RAX
-			XOR				RAX, RAX
-			CMP				RCX, 7
-			JG				@F
-			MOV				RAX, [RDX + RCX * 8]
-			INC				RCX
-@@:			MOV				[R11 + 2 * 8], RAX
-			XOR				RAX, RAX
-			CMP				RCX, 7
-			JG				@F
-			MOV				RAX, [RDX + RCX * 8]
-			INC				RCX
-@@:			MOV				[R11 + 3 * 8], RAX
-			XOR				RAX, RAX
-			CMP				RCX, 7
-			JG				@F
-			MOV				RAX, [RDX + RCX * 8]
-			INC				RCX
-@@:		    MOV				[R11 + 4 * 8], RAX
-			XOR				RAX, RAX
-			CMP				RCX, 7
-			JG				@F
-			MOV				RAX, [RDX + RCX * 8]
-			INC				RCX
-@@:			MOV				[R11 + 5 * 8], RAX
-			XOR				RAX, RAX
-			CMP				RCX, 7
-			JG				@F
-			MOV				RAX, [RDX + RCX * 8]
-			INC				RCX
-@@:			MOV				[R11 + 6 * 8], RAX
-			XOR				RAX, RAX
-			CMP				RCX, 7
-			JG				@F
-			MOV				RAX, [RDX + RCX * 8]
-@@:			MOV				[R11 + 7 * 8], RAX
-destsrcsame:
-
-; RCX: needed for cl shift counts; use RAX for load/store/shift, RDX for shift/save, R9 for counter/index, r10 bits left (exch with rcx for bits right), R11 for destination
-			MOV				RCX, 03Fh					; mask for last six bits of shift counter
-			AND				CX, R8W						; passed bit count, now in RCX, ECX, CX, and CL how many bits to shift right
-			CMP				CX, 0
-			JE				@F				; 
-			MOV				R10, 64
-			SUB				R10, RCX					; 64 - bit shift count (bits at high end of word that survive the shift) XCHG r10, RCX to use CL as shift count
-
-			MOV				RAX, [R11 + 7 * 8]
-			SHL				Q_PTR [R11 + 7 * 8], CL		; first word shifted
-
-			XCHG			RCX, R10
-			SHR				RAX, CL
-			XCHG			RCX, R10
-			MOV				R9, [R11 + 6 * 8]
-			SHL				Q_PTR [R11 + 6 * 8], CL		; second word shifted 
-			OR				Q_PTR [R11 + 6 * 8], RAX	; and low bits ORd in
-			MOV				RAX, R9
-			
-			XCHG			RCX, R10
-			SHR				RAX, CL
-			XCHG			RCX, R10
-			MOV				R9, [R11 + 5 * 8]
-			SHL				Q_PTR [R11 + 5 * 8], CL		; third word shifted 
-			OR				Q_PTR [R11 + 5 * 8], RAX	; and low bits ORd in
-			MOV				RAX, R9
-			
-			XCHG			RCX, R10
-			SHR				RAX, CL
-			XCHG			RCX, R10
-			MOV				R9, [R11 + 4 * 8]
-			SHL				Q_PTR [R11 + 4 * 8], CL		; fourth word shifted 
-			OR				Q_PTR [R11 + 4 * 8], RAX	; and low bits ORd in
-			MOV				RAX, R9
-			
-			XCHG			RCX, R10
-			SHR				RAX, CL
-			XCHG			RCX, R10
-			MOV				R9, [R11 + 3 * 8]
-			SHL				Q_PTR [R11 + 3 * 8], CL		; fifth word shifted 
-			OR				Q_PTR [R11 + 3 * 8], RAX	; and low bits ORd in
-			MOV				RAX, R9
-			
-			XCHG			RCX, R10
-			SHR				RAX, CL
-			XCHG			RCX, R10
-			MOV				R9, [R11 + 2 * 8]
-			SHL				Q_PTR [R11 + 2 * 8], CL		; sixth word shifted 
-			OR				Q_PTR [R11 + 2 * 8], RAX	; and low bits ORd in
-			MOV				RAX, R9
-			
-			XCHG			RCX, R10
-			SHR				RAX, CL
-			XCHG			RCX, R10
-			MOV				R9, [R11 + 1 * 8]
-			SHL				Q_PTR [R11 + 1 * 8], CL		; seventh word shifted 
-			OR				Q_PTR [R11 + 1 * 8], RAX	; and low bits ORd in	
-			MOV				RAX, R9
-						
-			XCHG			RCX, R10
-			SHR				RAX, CL
-			XCHG			RCX, R10
-			SHL				Q_PTR [R11 + 0 * 8], CL		; eigth word shifted 
-			OR				Q_PTR [R11 + 0 * 8], RAX	; and low bits ORd in	
-			
-@@:
-			POP				R11							; restore regs to "as-called" values
-			POP				R10
-			POP				R9
-			POP				RCX
+;	load sequential regs with source 8 qwords
+			MOV				R9, [RDX + 0 * 8]
+			MOV				R10, [RDX + 1 * 8]
+			MOV				R11, [RDX + 2 * 8]
+			MOV				R12, [RDX + 3 * 8]
+			MOV				R13, [RDX + 4 * 8]
+			MOV				R14, [RDX + 5 * 8]
+			MOV				R15, [RDX + 6 * 8]
+			MOV				RDI, [RDX + 7 * 8]
+;	determine if / how many bits to shift
+			MOVZX			RCX, R8W
+			AND				CX, 03fh
+			JZ				@@nobits
+			MOV				AX, 64
+			SUB				AX, CX
+			MOV				CL, AL						; CL right shift Nr
+			XCHG			CL, CH
+			MOV				CL, R8B						; CH left shift Nr
+			XCHG			CL, CH
+;
+;	Each word is shifted right, and the bits falling out are ORd into the next word.
+;	CL holds the number of bits to shift right, CH holds the complement for left shift.
+;	The CL register is used for the bit shift number, it is "XCHG" swapped with CH for the left or right shift
+;
+			MOV				RDX, R10					; Get the first word (of 0 to 7)
+			SHR				RDX, CL						; shift it right by 64 - bits to shift, putting first bits at low end of register
+			XCHG			CH, CL						; switch CL from bits to shift right, to bits to shift left
+			SHL				R9, CL						; Shift the zero (of 0 to 7) word left, truncating "top" bits
+			XCHG			CH, CL						; restore CL to the right shift number
+			OR				R9, RDX					; "OR" in the low bits from the 6th word into the shifted seventh word
+			;  . . . repeat for each word . . 
+			MOV				RDX, R11
+			SHR				RDX, CL
+			XCHG			CH, CL
+			SHL				R10, CL
+			XCHG			CH, CL
+			OR				R10, RDX
+			;
+			MOV				RDX, R12
+			SHR				RDX, CL
+			XCHG			CH, CL
+			SHL				R11, CL
+			XCHG			CH, CL
+			OR				R11, RDX
+			;
+			MOV				RDX, R13
+			SHR				RDX, CL
+			XCHG			CH, CL
+			SHL				R12, CL
+			XCHG			CH, CL
+			OR				R12, RDX
+			;
+			MOV				RDX, R14
+			SHR				RDX, CL
+			XCHG			CH, CL
+			SHL				R13, CL
+			XCHG			CH, CL
+			OR				R13, RDX
+			;
+			MOV				RDX, R15
+			SHR				RDX, CL
+			XCHG			CH, CL
+			SHL				R14, CL
+			XCHG			CH, CL
+			OR				R14, RDX
+			;
+			MOV				RDX, RDI
+			SHR				RDX, CL
+			XCHG			CH, CL
+			SHL				R15, CL
+			OR				R15, RDX
+			; no bits to OR in on the index 0 (high order) word, just shift it.
+			SHL				RDI, CL
+@@nobits:
+			; with the bits shifted within the words, if the desired shift is more than 64 bits, word shifts are required
+			; verify Nr of word shift is zero to seven, use it as index into jump table; jump to appropriate shift
+			SHR				R8W, 6
+			AND				R8, 07h 
+			SHL				R8W, 3
+			LEA				RAX, jtbl
+			ADD				R8, RAX
+			XOR				RAX, RAX					; clear rax for use as zeroing words shifted "in"
+			POP				RCX							; restore RCX, destination address
+			JMP				Q_PTR [ R8 ]
+jtbl:
+			QWORD			S0, S1, S2, S3, S4, S5, S6, S7
+S0:			; no word shift, just bits, so store words in destination in the same order as they are
+			MOV				[RCX + 0 * 8], R9
+			MOV				[RCX + 1 * 8], R10
+			MOV				[RCX + 2 * 8], R11
+			MOV				[RCX + 3 * 8], R12
+			MOV				[RCX + 4 * 8], R13
+			MOV				[RCX + 5 * 8], R14
+			MOV				[RCX + 6 * 8], R15
+			MOV				[RCX + 7 * 8], RDI	
+			JMP				@@R
+S1:			; one word shift, shifting one word (64+ bits) so store words in destination shifted left one, fill with zero
+			MOV				[RCX + 0 * 8], R10
+			MOV				[RCX + 1 * 8], R11
+			MOV				[RCX + 2 * 8], R12
+			MOV				[RCX + 3 * 8], R13
+			MOV				[RCX + 4 * 8], R14
+			MOV				[RCX + 5 * 8], R15
+			MOV				[RCX + 6 * 8], RDI
+			MOV				[RCX + 7 * 8], RAX	
+			JMP				@@R
+S2:			; two word shift
+			MOV				[RCX + 0 * 8], R11
+			MOV				[RCX + 1 * 8], R12
+			MOV				[RCX + 2 * 8], R13
+			MOV				[RCX + 3 * 8], R14
+			MOV				[RCX + 4 * 8], R15
+			MOV				[RCX + 5 * 8], RDI
+			MOV				[RCX + 6 * 8], RAX
+			MOV				[RCX + 7 * 8], RAX	
+			JMP				@@R
+S3:			; three word shift
+			MOV				[RCX + 0 * 8], R12
+			MOV				[RCX + 1 * 8], R13
+			MOV				[RCX + 2 * 8], R14
+			MOV				[RCX + 3 * 8], R15
+			MOV				[RCX + 4 * 8], RDI
+			MOV				[RCX + 5 * 8], RAX
+			MOV				[RCX + 6 * 8], RAX
+			MOV				[RCX + 7 * 8], RAX	
+			JMP				@@R
+S4:			; four word shift
+			MOV				[RCX + 0 * 8], R13
+			MOV				[RCX + 1 * 8], R14
+			MOV				[RCX + 2 * 8], R15
+			MOV				[RCX + 3 * 8], RDI
+			MOV				[RCX + 4 * 8], RAX
+			MOV				[RCX + 5 * 8], RAX
+			MOV				[RCX + 6 * 8], RAX
+			MOV				[RCX + 7 * 8], RAX	
+			JMP				@@R
+S5:			; five word shift
+			MOV				[RCX + 0 * 8], R14
+			MOV				[RCX + 1 * 8], R15
+			MOV				[RCX + 2 * 8], RDI
+			MOV				[RCX + 3 * 8], RAX
+			MOV				[RCX + 4 * 8], RAX
+			MOV				[RCX + 5 * 8], RAX
+			MOV				[RCX + 6 * 8], RAX
+			MOV				[RCX + 7 * 8], RAX	
+			JMP				@@R
+S6:			; six word shift
+			MOV				[RCX + 0 * 8], R15
+			MOV				[RCX + 1 * 8], RDI
+			MOV				[RCX + 2 * 8], RAX
+			MOV				[RCX + 3 * 8], RAX
+			MOV				[RCX + 4 * 8], RAX
+			MOV				[RCX + 5 * 8], RAX
+			MOV				[RCX + 6 * 8], RAX
+			MOV				[RCX + 7 * 8], RAX	
+			JMP				@@R
+S7:			; seven word shift
+			MOV				[RCX + 0 * 8], RDI
+			MOV				[RCX + 1 * 8], RAX
+			MOV				[RCX + 2 * 8], RAX
+			MOV				[RCX + 3 * 8], RAX
+			MOV				[RCX + 4 * 8], RAX
+			MOV				[RCX + 5 * 8], RAX
+			MOV				[RCX + 6 * 8], RAX
+			MOV				[RCX + 7 * 8], RAX	
+@@R:
+;	restore non-volitile regs to as-called condition
+			POP				RDI
+			POP				R15
+			POP				R14
+			POP				R13
+			POP				R12
+	ENDIF
 shl_u_ret:
 			RET	
 shl_u		ENDP
 
+;--------------------------------------------------------------------------------------------------------------------------------------------------------------
 ;			and_u		-	logical 'AND' bits in lh_op, rh_op, put result in destination
 ;			Prototype:		void and_u( u64* destination, u64* lh_op, u64* rh_op);
 ;			destination	-	Address of 64 byte alligned array of 8 64-bit words (QWORDS) 512 bits (in RCX)
@@ -540,12 +616,14 @@ and_u		PROC			PUBLIC
 			RET		
 and_u		ENDP
 
+;--------------------------------------------------------------------------------------------------------------------------------------------------------------
 ;			or_u		-	logical 'OR' bits in lh_op, rh_op, put result in destination
 ;			Prototype:		void or_u( u64* destination, u64* lh_op, u64* rh_op);
 ;			destination	-	Address of 64 byte alligned array of 8 64-bit words (QWORDS) 512 bits (in RCX)
 ;			lh_op		-	Address of 64 byte alligned array of 8 64-bit words (QWORDS) 512 bits (in RDX)
 ;			rh_op		-	Address of 64 byte alligned array of 8 64-bit words (QWORDS) 512 bits (in R8)
 ;			returns		-	nothing (0)
+
 or_u		PROC			PUBLIC
 	IF		__UseZ		
 			VMOVDQA64		ZMM31, ZM_PTR [ RDX ]			
@@ -600,15 +678,17 @@ or_u		PROC			PUBLIC
 			RET 
 or_u		ENDP
 
+;--------------------------------------------------------------------------------------------------------------------------------------------------------------
 ;			not_u		-	logical 'NOT' bits in source, put result in destination
 ;			Prototype:		void not_u( u64* destination, u64* source);
 ;			destination	-	Address of 64 byte alligned array of 8 64-bit words (QWORDS) 512 bits (in RCX)
 ;			source		-	Address of 64 byte alligned array of 8 64-bit words (QWORDS) 512 bits (in RDX)
 ;			returns		-	nothing (0)
+
 not_u		PROC			PUBLIC
 	IF		__UseZ	
 			VMOVDQA64		ZMM31, ZM_PTR [RDX]			
-			VPANDNQ			ZMM31, ZMM31, qOnes			; qOnes (declared in this module, in the data section) is 8 QWORDS, binary all ones
+			VPANDNQ			ZMM31, ZMM31, qOnes			; qOnes (declared in the data section of this module) is 8 QWORDS, binary all ones
 			VMOVDQA64		ZM_PTR [RCX], ZMM31
 	ELSEIF	__UseY
 			VMOVDQA64		YMM4, YM_PTR [ RDX ] + [ 0 * 8 ]
@@ -659,10 +739,12 @@ not_u		PROC			PUBLIC
 			RET	
 not_u		ENDP
 
+;--------------------------------------------------------------------------------------------------------------------------------------------------------------
 ;			msb_u		-	find most significant bit in supplied source 512bit (8 QWORDS)
 ;			Prototype:		s16 msb_u( u64* source );
 ;			source		-	Address of 64 byte alligned array of 8 64-bit words (QWORDS) 512 bits (in RCX)
 ;			returns		-	-1 if no most significant bit, bit number otherwise, bits numbered 0 to 511 inclusive
+
 			OPTION			PROLOGUE:none
 			OPTION			EPILOGUE:none
 msb_u		PROC			PUBLIC
@@ -688,10 +770,12 @@ msb_u		PROC			PUBLIC
 			RET		
 msb_u		ENDP
 
+;--------------------------------------------------------------------------------------------------------------------------------------------------------------
 ;			lsb_u		-	find least significant bit in supplied source 512bit (8 QWORDS)
 ;			Prototype:		s16 lsb_u( u64* source );
 ;			source		-	Address of 64 byte alligned array of 8 64-bit words (QWORDS) 512 bits (in RCX)
 ;			returns		-	-1 if no least significant bit, bit number otherwise, bits numbered 0 to 511 inclusive
+
 			OPTION			PROLOGUE:none
 			OPTION			EPILOGUE:none
 lsb_u		PROC			PUBLIC
@@ -715,5 +799,7 @@ lsb_u		PROC			PUBLIC
 			POP				R9
 			RET
 lsb_u		ENDP
+
+
 
 			END

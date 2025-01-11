@@ -5,24 +5,29 @@
 //		Legal:			Copyright @2024, per MIT License below
 //		Date:			June 11, 2024
 //
-//		ui512 is a small project to provide basic operations for a variable type of unsigned 512 bit integer.
-//		The basic operations : zero, copy, compare, add, subtract.
-//		Other optional modules provide bit ops and multiply / divide.
-//		It is written in assembly language, using the MASM ( ml64 ) assembler provided as an option within Visual Studio.
-//		( currently using VS Community 2022 17.9.6 )
-//		It provides external signatures that allow linkage to C and C++ programs,
-//		where a shell / wrapper could encapsulate the methods as part of an object.
-//		It has assembly time options directing the use of Intel processor extensions : AVX4, AVX2, SIMD, or none :
-//		( Z ( 512 ), Y ( 256 ), or X ( 128 ) registers, or regular Q ( 64bit ) ).
-//		If processor extensions are used, the caller must align the variables declared and passed
-//		on the appropriate byte boundary ( e.g. alignas 64 for 512 )
-//		This module is very light - weight ( less than 1K bytes ) and relatively fast,
-//		but is not intended for all processor types or all environments.
-//		Use for private ( hobbyist ), or instructional,
-//		or as an example for more ambitious projects is all it is meant to be.
-// 
-// 		ui512b provides basic bit-oriented operations: shift left, shift right, and, or, not,
-//		least significant bit and most significant bit.
+//			Notes:
+//				ui512 is a small project to provide basic operations for a variable type of unsigned 512 bit integer.
+//
+//				ui512a provides basic operations : zero, copy, compare, add, subtract.
+//				ui512b provides basic bit - oriented operations : shift left, shift right, and, or , not, least significant bit and most significant bit.
+//               ui512md provides multiply and divide.
+//
+//				It is written in assembly language, using the MASM(ml64) assembler provided as an option within Visual Studio.
+//				(currently using VS Community 2022 17.9.6)
+//
+//				It provides external signatures that allow linkage to C and C++ programs,
+//				where a shell / wrapper could encapsulate the methods as part of an object.
+//
+//				It has assembly time options directing the use of Intel processor extensions : AVX4, AVX2, SIMD, or none :
+//				(Z(512), Y(256), or X(128) registers, or regular Q(64bit)).
+//
+//				If processor extensions are used, the caller must align the variables declared and passed
+//				on the appropriate byte boundary(e.g. alignas 64 for 512)
+//
+//				This module is very light - weight(less than 1K bytes) and relatively fast,
+//				but is not intended for all processor types or all environments.
+//
+//				Use for private (hobbyist), or instructional, or as an example for more ambitious projects is all it is meant to be.
 //
 //		This sub - project: ui512aTests, is a unit test project that invokes each of the routines in the ui512a assembly.
 //		It runs each assembler proc with pseudo - random values.
@@ -186,8 +191,8 @@ namespace ui512bTests
 					{
 						string errmsg = "Shift right walk failed. shift count: "
 							+ to_string(i)
-							+ " word index: " + to_string(j);
-						+" wlk1: " + to_string(wlk1[j])
+							+ " word index: " + to_string(j)
+							+ " wlk1: " + to_string(wlk1[j])
 							+ " wlk2: " + to_string(wlk2[j])
 							+ ":\n";
 
@@ -205,7 +210,7 @@ namespace ui512bTests
 			Assert::AreEqual(1ull, wlk2[7]);
 			Assert::AreEqual(1ull, wlk1[7]);
 
-			string runmsg = "Shift right function testing. Ran tests " + to_string(517) + " times, with selected bit values.\n";
+			string runmsg = "Shift right function testing. Ran tests " + to_string(4 + 512 + 511) + " times, with selected bit values.\n";
 			Logger::WriteMessage(runmsg.c_str());
 			Logger::WriteMessage(L"Passed. Tested expected values via assert.\n");
 		};
@@ -216,14 +221,16 @@ namespace ui512bTests
 			alignas (64) u64 num1[8]{ 0, 0, 0, 0, 0, 0, 0, 0 };
 			alignas (64) u64 num2[8]{ 0, 0, 0, 0, 0, 0, 0, 0 };
 			u16 shftcnt = 0;
+			for (int j = 0; j < 8; j++)
+			{
+				num1[j] = RandomU64(&seed);;
+			};
+
+			shftcnt = RandomU64(&seed) % 512;
+
 			for (int i = 0; i < timingcount; i++)
 			{
-				for (int j = 0; j < 8; j++)
-				{
-					num1[j] = RandomU64(&seed);;
-				};
 
-				shftcnt = RandomU64(&seed) % 512;
 				shr_u(num2, num1, shftcnt);
 			};
 
@@ -289,9 +296,9 @@ namespace ui512bTests
 				{
 					if (wlk1[j] != wlk2[j])
 					{
-						string errmsg = "Shift left walk failed. shift count:"
+						string errmsg = "Shift left walk failed. shift count: "
 							+ to_string(i)
-							+ "wlk1: " + to_string(wlk1[j])
+							+ " wlk1: " + to_string(wlk1[j])
 							+ " wlk2: " + to_string(wlk2[j])
 							+ ":\n";
 
@@ -310,7 +317,7 @@ namespace ui512bTests
 			Assert::AreEqual(0x8000000000000000ull, wlk2[0]);
 			Assert::AreEqual(0x8000000000000000ull, wlk1[0]);
 
-			string runmsg = "Shift left function testing" + to_string(517) + " times, with selected bit values.\n";
+			string runmsg = "Shift left function testing" + to_string(4 + 512 + 511) + " times, with selected bit values.\n";
 			Logger::WriteMessage(runmsg.c_str());
 			Logger::WriteMessage(L"Passed. Tested expected values via assert.\n");
 		};
@@ -321,14 +328,14 @@ namespace ui512bTests
 			alignas (64) u64 num1[8]{ 0, 0, 0, 0, 0, 0, 0, 0 };
 			alignas (64) u64 num2[8]{ 0, 0, 0, 0, 0, 0, 0, 0 };
 			u16 shftcnt = 0;
+			for (int j = 0; j < 8; j++)
+			{
+				num1[j] = RandomU64(&seed);;
+			};
+
+			shftcnt = RandomU64(&seed) % 512;
 			for (int i = 0; i < timingcount; i++)
 			{
-				for (int j = 0; j < 8; j++)
-				{
-					num1[j] = RandomU64(&seed);;
-				};
-
-				shftcnt = RandomU64(&seed) % 512;
 				shl_u(num2, num1, shftcnt);
 			};
 

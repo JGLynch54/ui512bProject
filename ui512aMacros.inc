@@ -2,6 +2,8 @@
 ;
 ;			ui512aMacros
 ;
+;--------------------------------------------------------------------------------------------------------------------------------------------------------------
+;
 ;			File:			ui512aMacros.inc
 ;			Author:			John G. Lynch
 ;			Legal:			Copyright @2024, per MIT License below
@@ -9,20 +11,30 @@
 ;
 ;			Notes:
 ;				ui512 is a small project to provide basic operations for a variable type of unsigned 512 bit integer.
-;				The basic operations: zero, copy, compare, add, subtract.
-;               Other optional modules provide bit ops and multiply / divide.
+;
+;				ui512a provides basic operations: zero, copy, compare, add, subtract.
+;				ui512b provides basic bit-oriented operations: shift left, shift right, and, or, not, least significant bit and most significant bit.
+;               ui512md provides multiply and divide.
+;
 ;				It is written in assembly language, using the MASM (ml64) assembler provided as an option within Visual Studio.
 ;				(currently using VS Community 2022 17.9.6)
+;
 ;				It provides external signatures that allow linkage to C and C++ programs,
 ;				where a shell/wrapper could encapsulate the methods as part of an object.
+;
 ;				It has assembly time options directing the use of Intel processor extensions: AVX4, AVX2, SIMD, or none:
 ;				(Z (512), Y (256), or X (128) registers, or regular Q (64bit)).
+;
 ;				If processor extensions are used, the caller must align the variables declared and passed
 ;				on the appropriate byte boundary (e.g. alignas 64 for 512)
+;
 ;				This module is very light-weight (less than 1K bytes) and relatively fast,
 ;				but is not intended for all processor types or all environments. 
-;				Use for private (hobbyist), or instructional,
-;				or as an example for more ambitious projects is all it is meant to be.
+;
+;				Use for private (hobbyist), or instructional, or as an example for more ambitious projects is all it is meant to be.
+;
+;
+;--------------------------------------------------------------------------------------------------------------------------------------------------------------
 ;
 ;			MIT License
 ;
@@ -46,9 +58,15 @@
 ;				OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 ;				SOFTWARE.
 ;
+;--------------------------------------------------------------------------------------------------------------------------------------------------------------
+
 .list
 IFNDEF						ui512aMacros_INC
 ui512aMacros_INC EQU		<1>
+
+;
+;--------------------------------------------------------------------------------------------------------------------------------------------------------------
+;
 ;           header file equivalent extern declarations
 ;			EXTERN "C" signatures (from ui512a.asm)
 
@@ -94,11 +112,12 @@ EXTERNDEF	sub_u:PROC
 ;	// returns: zero for no borrow, 1 for borrow (underflow)
 EXTERNDEF	sub_uT64:PROC
 
+;--------------------------------------------------------------------------------------------------------------------------------------------------------------
 ;			Configuration choices
 __UseZ		EQU				1							; Use AVX4 processor features (512 bit registers and instructions)
 __UseY		EQU				0							; Use AVX2 processor features (256 bit registers and instructions)
 __UseX		EQU				0							; Use SIMD/SSE processor features (128 bit registers and instructions)
-__UseQ		EQU				0							; Do not use extensions, use standard x64 bit registers and instructions
+__UseQ		EQU				1							; Do not use extensions, use standard x64 bit registers and instructions
 
 ;           Some coding shortcuts
 ZM_PTR      EQU             ZMMWORD PTR
@@ -118,10 +137,9 @@ CPLE		EQU				2
 CPNE		EQU				4
 CPGE		EQU				5
 CPGT		EQU				6
-;===============================================
-;          Local macros
-;===============================================
 
+;
+;--------------------------------------------------------------------------------------------------------------------------------------------------------------
 ;==========================================================================================
 ;           Notes on x64 calling conventions        aka "fast call"
 ; ref: https://learn.microsoft.com/en-us/cpp/build/x64-calling-convention?view=msvc-170
@@ -144,10 +162,18 @@ CPGT		EQU				6
 ;
 ;===========================================================================================
 
-Zero512		MACRO			dest
+;
+;--------------------------------------------------------------------------------------------------------------------------------------------------------------
+;===============================================
+;          Local macros
+;===============================================
+
+;
+;--------------------------------------------------------------------------------------------------------------------------------------------------------------
 ;
 ;			Zero a 512 bit destination, conditional assembly based on configuration parameters
 ;
+Zero512		MACRO			dest
 	IF		__UseZ
 			VPXORQ			ZMM31, ZMM31, ZMM31
 			VMOVDQA64		ZM_PTR [ dest ], ZMM31
@@ -174,10 +200,12 @@ Zero512		MACRO			dest
 	ENDIF
 			ENDM
 
-Copy512		MACRO			dest, src
+;
+;--------------------------------------------------------------------------------------------------------------------------------------------------------------
 ;
 ;			Copy a 512 bit source to destination, conditional assembly based on configuration parameters
 ;
+Copy512		MACRO			dest, src
 	IF		__UseZ
 			VMOVDQA64		ZMM31, ZM_PTR [ src ]
 			VMOVDQA64		ZM_PTR [ dest ], ZMM31
