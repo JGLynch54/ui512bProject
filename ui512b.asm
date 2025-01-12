@@ -95,7 +95,7 @@ shr_u		PROC			PUBLIC
 	IF		__UseZ
 			VMOVDQA64		ZMM31, ZM_PTR [ RDX ]		; load the 8 qwords into zmm reg (note: word order)
 			MOVZX			RAX, R8W
-			AND				AX, 63
+			AND				AX, 03fh
 			JZ				@F							; must be multiple of 64 bits to shift, no bits, just words to shift
 			VPBROADCASTQ	ZMM29, RAX					; Nr bits to shift right
 			VPXORQ			ZMM28, ZMM28, ZMM28			; 
@@ -148,11 +148,12 @@ shr_u		PROC			PUBLIC
 			MOVZX			RCX, R8W
 			AND				CX, 03fh
 			JZ				@@nobits
-			MOV				AX, 64
+			MOV				RAX, 64
 			SUB				AX, CX
 			MOV				CL, AL						; CL left shift Nr
 			XCHG			CL, CH
 			MOV				CL, R8B						; CH right shift Nr
+			AND				CL, 03fh
 			XCHG			CL, CH
 ;
 ;	Each word is shifted right, and the bits falling out are ORd into the next word.
@@ -336,7 +337,7 @@ shl_u		PROC			PUBLIC
 	IF		__UseZ
 			VMOVDQA64		ZMM31, ZM_PTR [ RDX ]		; load the 8 qwords into zmm reg (note: word order)
 			MOVZX			RAX, R8W
-			AND				AX, 63
+			AND				AX, 03fh
 			JZ				@F							; must be multiple of 64 bits to shift, no bits, just words to shift
 ;			Do the shift of bits within the 64 bit words
 			VPBROADCASTQ	ZMM29, RAX					; Nr bits to shift left
@@ -396,6 +397,7 @@ shl_u		PROC			PUBLIC
 			MOV				CL, AL						; CL right shift Nr
 			XCHG			CL, CH
 			MOV				CL, R8B						; CH left shift Nr
+			AND				CL, 03fh
 			XCHG			CL, CH
 ;
 ;	Each word is shifted right, and the bits falling out are ORd into the next word.

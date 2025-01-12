@@ -180,10 +180,6 @@ namespace ui512bTests
 			u16 shiftwalkcount = 1;
 			for (int i = 0; i < 512; i++)
 			{
-				if (i == 63)
-				{
-					Logger::WriteMessage("Oops\n");
-				}
 				shr_u(wlk2, num3, i);
 				for (int j = 7; j >= 0; j--)
 				{
@@ -317,7 +313,7 @@ namespace ui512bTests
 			Assert::AreEqual(0x8000000000000000ull, wlk2[0]);
 			Assert::AreEqual(0x8000000000000000ull, wlk1[0]);
 
-			string runmsg = "Shift left function testing" + to_string(4 + 512 + 511) + " times, with selected bit values.\n";
+			string runmsg = "Shift left function testing. Ran tests " + to_string(4 + 512 + 511) + " times, with selected bit values.\n";
 			Logger::WriteMessage(runmsg.c_str());
 			Logger::WriteMessage(L"Passed. Tested expected values via assert.\n");
 		};
