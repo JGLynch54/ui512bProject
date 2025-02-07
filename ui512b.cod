@@ -1,4 +1,4 @@
-Microsoft (R) Macro Assembler (x64) Version 14.42.34435.0   01/12/25 11:41:00
+Microsoft (R) Macro Assembler (x64) Version 14.42.34436.0   02/07/25 10:08:53
 ui512b.asm						     Page 1 - 1
 
 
@@ -120,7 +120,7 @@ ui512b.asm						     Page 1 - 1
  = 00000001		      C __UseZ		EQU				1							; Use AVX4 processor features (512 bit registers and instructions)
  = 00000000		      C __UseY		EQU				0							; Use AVX2 processor features (256 bit registers and instructions)
  = 00000000		      C __UseX		EQU				0							; Use SIMD/SSE processor features (128 bit registers and instructions)
- = 00000001		      C __UseQ		EQU				1							; Do not use extensions, use standard x64 bit registers and instructions
+ = 00000000		      C __UseQ		EQU				0							; Do not use extensions, use standard x64 bit registers and instructions
 			      C 
 			      C ;           Some coding shortcuts
  = ZMMWORD PTR		      C ZM_PTR      EQU             ZMMWORD PTR
@@ -620,10 +620,8 @@ ui512b.asm						     Page 1 - 1
  000002AA  C3						RET
  000002AB			lsb_u		ENDP
 
-
-
 							END
-Microsoft (R) Macro Assembler (x64) Version 14.42.34435.0   01/12/25 11:41:00
+Microsoft (R) Macro Assembler (x64) Version 14.42.34436.0   02/07/25 10:08:53
 ui512b.asm						     Symbols 2 - 1
 
 
@@ -700,7 +698,7 @@ W_PTR  . . . . . . . . . . . . .	Text   	 WORD PTR
 XM_PTR . . . . . . . . . . . . .	Text   	 XMMWORD PTR
 YM_PTR . . . . . . . . . . . . .	Text   	 YMMWORD PTR
 ZM_PTR . . . . . . . . . . . . .	Text   	 ZMMWORD PTR
-__UseQ . . . . . . . . . . . . .	Number	 00000001h   
+__UseQ . . . . . . . . . . . . .	Number	 00000000h   
 __UseX . . . . . . . . . . . . .	Number	 00000000h   
 __UseY . . . . . . . . . . . . .	Number	 00000000h   
 __UseZ . . . . . . . . . . . . .	Number	 00000001h   
