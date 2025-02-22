@@ -141,11 +141,8 @@
     <Text Include="LICENSE.txt" />
   </ItemGroup>
   <ItemGroup>
+    <MASM Include="ui512b.asm" />
     <None Include="ReadMe.md" />
-    <MASM Include="ui512b.asm">
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
-      <FileType>Document</FileType>
-    </MASM>
     <None Include="ui512aMacros.inc" />
     <None Include="ui512bMacros.inc" />
   </ItemGroup>

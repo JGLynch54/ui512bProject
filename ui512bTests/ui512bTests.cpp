@@ -53,7 +53,7 @@ namespace ui512bTests
 	public:
 
 		const s32 runcount = 2500;
-		const s32 timingcount = 10000000;
+		const s32 timingcount = 100000000;
 
 		/// <summary>
 		/// Random number generator
@@ -486,7 +486,29 @@ namespace ui512bTests
 			s16 bitloc = 0;
 			s16 expectedbitloc = 0;
 			int adjruncount = runcount / 64;
+
 			alignas (64) u64 num1[8]{ 0, 0, 0, 0, 0, 0, 0, 0 };
+
+			alignas (64) u64 highbit[8]{ 0x8000000000000000, 0, 0, 0, 0, 0, 0, 0 };
+			alignas (64) u64 lowbit[8]{ 0, 0, 0, 0, 0, 0, 0, 1 };
+			alignas (64) u64 b2bit[8]{ 0, 0, 0, 0, 0, 0, 0, 2 };
+			alignas (64) u64 nobit[8]{ 0, 0, 0, 0, 0, 0, 0, 0 };
+			alignas (64) u64 choosebit[8]{ 0, 1, 0, 0, 0, 0x8000000000000000, 0, 0 };
+
+			s16 highbitloc = msb_u(highbit);
+			Assert::AreEqual(s16(511), highbitloc);
+
+			s16 lowbitloc = msb_u(lowbit);
+			Assert::AreEqual(s16(0), lowbitloc);
+
+			s16 b2bitloc = msb_u(b2bit);
+			Assert::AreEqual(s16(1), b2bitloc);
+
+			s16 nobitloc = msb_u(nobit);
+			Assert::AreEqual(s16(-1), nobitloc);
+
+			s16 choosebitloc = msb_u(choosebit);
+			Assert::AreEqual(s16(384), choosebitloc);
 
 			for (int i = 0; i < adjruncount; i++)
 			{
@@ -496,9 +518,9 @@ namespace ui512bTests
 					for (int k = 0; k < 64; k++)
 					{
 						num1[j] = val;
-						expectedbitloc = (j * 64) + k;
+						expectedbitloc = 511 - ((j * 64) + k);
 						bitloc = msb_u(num1);
-						Assert::AreEqual(expectedbitloc, s16(511 - bitloc));
+						Assert::AreEqual(expectedbitloc, bitloc);
 						val = val >> 1;
 					};
 
@@ -539,6 +561,27 @@ namespace ui512bTests
 			s16 expectedbitloc = 0;
 			alignas (64) u64 num1[8]{ 0, 0, 0, 0, 0, 0, 0, 0 };
 			int adjruncount = runcount / 64;
+
+			alignas (64) u64 highbit[8]{ 0x8000000000000000, 0, 0, 0, 0, 0, 0, 0 };
+			alignas (64) u64 lowbit[8]{ 0, 0, 0, 0, 0, 0, 0, 1 };
+			alignas (64) u64 b2bit[8]{ 0, 0, 0, 0, 0, 0, 0, 2 };
+			alignas (64) u64 nobit[8]{ 0, 0, 0, 0, 0, 0, 0, 0 };
+			alignas (64) u64 choosebit[8]{ 0, 1, 0, 0, 0, 0x8000000000000000, 0, 0 };
+
+			s16 highbitloc = lsb_u(highbit);
+			Assert::AreEqual(s16(511), highbitloc);
+
+			s16 lowbitloc = lsb_u(lowbit);
+			Assert::AreEqual(s16(0), lowbitloc);
+
+			s16 b2bitloc = lsb_u(b2bit);
+			Assert::AreEqual(s16(1), b2bitloc);
+
+			s16 nobitloc = lsb_u(nobit);
+			Assert::AreEqual(s16(-1), nobitloc);
+
+			s16 choosebitloc = lsb_u(choosebit);
+			Assert::AreEqual(s16(191), choosebitloc);
 
 			for (int i = 0; i < adjruncount; i++)
 			{
