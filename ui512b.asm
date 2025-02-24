@@ -69,6 +69,8 @@ aligned64		ENDS
 .CODE			ui512b
 				OPTION          PROLOGUE:none
 				OPTION          EPILOGUE:none
+
+				MemConstants
 ;--------------------------------------------------------------------------------------------------------------------------------------------------------------
 ;			shr_u		-	shift supplied source 512bit (8 QWORDS) right, put in destination
 ;			Prototype:		void shr_u( u64* destination, u64* source, u32 bits_to_shift)
@@ -99,7 +101,7 @@ shr_u			PROC			PUBLIC
 	IF	__UseZ
 				VMOVDQA64		ZMM31, ZM_PTR [ RDX ]			; load the 8 qwords into zmm reg (note: word order)
 				MOVZX			RAX, R8W
-				AND				AX, 03fh
+				AND				AX, 03fh						; limit shift count to 63 (shifting bits only here, not words)
 				JZ				@F								; must be multiple of 64 bits to shift, no bits, just words to shift
 				VPBROADCASTQ	ZMM29, RAX						; Nr bits to shift right
 				VPXORQ			ZMM28, ZMM28, ZMM28				; 
@@ -349,8 +351,8 @@ shl_u			PROC			PUBLIC
 				JMP				@@ret
 @@:
 
-	IF	__UseZ
-
+	IF __UseZ
+	
 				VMOVDQA64		ZMM31, ZM_PTR [ RDX ]		; load the 8 qwords into zmm reg (note: word order)
 				MOVZX			RAX, R8W
 				AND				AX, 03fh
@@ -832,7 +834,7 @@ msb_u			PROC			PUBLIC
 				KMOVB			EAX, K1
 				CMP				EAX, 0						; exit with -1 if all eight qwords are zero (no significant bit)
 				JE				@@zero
-				BSF				ECX, EAX					; determine index of word from last non-zero bit in mask
+				BSF				ECX, EAX					; determine index of word from first non-zero bit in mask
 				MOV				RAX, 7
 				SUB				RAX, RCX					; convert index to offset
 				SHL				RAX, 6
@@ -846,6 +848,8 @@ msb_u			PROC			PUBLIC
 				RET
 	ELSE
 
+				PUSH			R10
+				PUSH			R11
 				MOV				R10, -1						; Initialize loop counter (and index)
 @@NextWord:
 				INC				R10D
@@ -861,6 +865,8 @@ msb_u			PROC			PUBLIC
 				SHL				R11D, 6						; times 64 for each word
 				ADD				EAX, R11D					; plus the BSR found bit position within the word yields the bit position within the 512 bit source
 @@Finished:
+				POP				R11
+				POP				R10
 				RET	
 	ENDIF
 msb_u			ENDP
@@ -874,6 +880,38 @@ msb_u			ENDP
 ;					a returned 511 means bit63 of the first word (the left most bit)
 
 lsb_u			PROC			PUBLIC
+				
+				CheckAlign		RCX
+
+	IF __UseZ
+				Push			R9
+				VMOVDQA64		ZMM31, ZM_PTR [RCX]			; Load source 
+				VPTESTMQ		K1, ZMM31, ZMM31			; find non-zero words (if any)
+				KMOVB			EAX, K1
+				CMP				EAX, 0						; exit with -1 if all eight qwords are zero (no significant bit)
+				JE				@@zero
+				BSR				ECX, EAX					; determine index of word from last non-zero bit in mask
+				MOV				RAX, 7
+				SUB				RAX, RCX					; convert index to offset
+				SHL				RAX, 6
+				XOR				R9, R9
+				INC				R9
+				SHL				R9, CL
+				KMOVB			K2, R9
+				VPCOMPRESSQ		ZMM0 {k2}{z}, ZMM31
+				VMOVQ			RCX, XMM0					; extract the non-zero word
+				BSR				RCX, RCX					; get the index of the non-zero bit within the word
+				ADD				RAX, RCX					; Word index * 64 + bit index becomes bit index to first non-zero bit (0 to 511, where )
+				JMP				@ret
+@@zero:
+				MOV				EAX, -1
+@ret:
+				POP				R9
+				RET
+	ELSE
+
+				PUSH			R10
+				PUSH			R11
 				MOV				R10, 8						; Initialize loop counter (and index)
 @@NextWord:
 				DEC				R10D
@@ -889,7 +927,10 @@ lsb_u			PROC			PUBLIC
 				SHL				R11D, 6						; times 64 for each word
 				ADD				EAX, R11D					; plus the BSF found bit position within the word yields the bit position within the 512 bit source
 @@Finished:
+				POP				R11
+				POP				R10
 				RET
+	ENDIF
 lsb_u			ENDP
 
 

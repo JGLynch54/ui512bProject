@@ -74,7 +74,7 @@ namespace ui512bTests
 
 		TEST_METHOD(random_number_generator)
 		{
-			//	Check distibution of "random" numbers
+			//	Check distribution of "random" numbers
 			u64 seed = 0;
 			const u32 dec = 10;
 			u32 dist[dec]{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
@@ -96,11 +96,11 @@ namespace ui512bTests
 
 			string msgd = "Evaluation of pseudo-random number generator.\n\n";
 			msgd += format("Generated {0:*>8} numbers.\n", randomcount);
-			msgd += format("Counted occurances of those numbers by decile, each decile {0:*>20}.\n", split);
-			msgd += format("Distribution of numbers accross the deciles indicates the quality of the generator.\n\n");
+			msgd += format("Counted occurrences of those numbers by decile, each decile {0:*>20}.\n", split);
+			msgd += format("Distribution of numbers across the deciles indicates the quality of the generator.\n\n");
 			msgd += "Distribution by decile:";
 			string msgv = "Variance from mean:\t";
-			string msgchi = "Varience ^2 (chi):\t";
+			string msgchi = "Variance ^2 (chi):\t";
 
 			for (int i = 0; i < 10; i++)
 			{
@@ -117,7 +117,7 @@ namespace ui512bTests
 
 			msgd += "\t\tDecile counts sum to: " + to_string(distc) + "\n";
 			Logger::WriteMessage(msgd.c_str());
-			msgv += "\t\tVarience sums to: ";
+			msgv += "\t\tVariance sums to: ";
 			msgv += format("\t{:6.3f}% ", varsum);
 			msgv += '\n';
 			Logger::WriteMessage(msgv.c_str());

@@ -27,7 +27,7 @@
 ;				If processor extensions are used, the caller must align the variables declared and passed
 ;				on the appropriate byte boundary (e.g. alignas 64 for 512)
 ;
-;				This module is very light-weight (less than 1K bytes) and relatively fast,
+;				This module is very light-weight (less than 2K bytes) and relatively fast,
 ;				but is not intended for all processor types or all environments. 
 ;
 ;				Use for private (hobbyist), or instructional, or as an example for more ambitious projects is all it is meant to be.

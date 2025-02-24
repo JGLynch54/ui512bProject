@@ -26,7 +26,7 @@
 ;				If processor extensions are used, the caller must align the variables declared and passed
 ;				on the appropriate byte boundary (e.g. alignas 64 for 512)
 ;
-;				This module is very light-weight (less than 1K bytes) and relatively fast,
+;				This module is very light-weight (less than 2K bytes) and relatively fast,
 ;				but is not intended for all processor types or all environments. 
 ;
 ;				Use for private (hobbyist), or instructional, or as an example for more ambitious projects is all it is meant to be.
@@ -74,32 +74,32 @@ EXTERNDEF		copy_u:PROC
 ;	// set supplied destination 512 bit to supplied u64 value
 EXTERNDEF		set_uT64:PROC
 
-;	// int compare_u ( u64* lh_op, u64* rh_op );
+;	// s16 compare_u ( u64* lh_op, u64* rh_op );
 ;	// compare supplied 512bit (8 QWORDS) LH operand to supplied RH operand
 ;	// returns: (0) for equal, -1 for less than, 1 for greater than (logical, unsigned compare)
 EXTERNDEF		compare_u:PROC
 
-;	// int compare_uT64 ( u64* lh_op, u64 rh_op );
+;	// s16 compare_uT64 ( u64* lh_op, u64 rh_op );
 ;	// compare supplied 512bit (8 QWORDS) LH operand to supplied 64bit RH operand (value)
 ;	// returns: (0) for equal, -1 for less than, 1 for greater than (logical, unsigned compare)
 EXTERNDEF		compare_uT64:PROC
 
-;	// void add_u ( u64* sum, u64* addend1, u64* addend2 );
+;	// s16 add_u ( u64* sum, u64* addend1, u64* addend2 );
 ;	// add supplied 512bit (8 QWORDS) sources, place in supplied destination
 ;	// returns: zero for no carry, 1 for carry (overflow)
 EXTERNDEF		add_u:PROC
 
-;	// s32 add_uT64 ( u64* sum, u64* addend1, u64 addend2 );
+;	// s16 add_uT64 ( u64* sum, u64* addend1, u64 addend2 );
 ;	// add 64bit QWORD (value) to supplied 512bit (8 QWORDS), place in supplied destination
 ;	// returns: zero for no carry, 1 for carry (overflow)
 EXTERNDEF		add_uT64:PROC
 
-;	// s32 sub_u ( u64* difference, u64* left operand, u64* right operand );
+;	// s16 sub_u ( u64* difference, u64* left operand, u64* right operand );
 ;	// subtract supplied 512bit (8 QWORDS) RH OP from LH OP giving difference in destination
 ;	// returns: zero for no borrow, 1 for borrow (underflow)
 EXTERNDEF		sub_u:PROC
 
-;	// s32 sub_uT64( u64* difference, u64* left operand, u64 right operand );
+;	// s16 sub_uT64( u64* difference, u64* left operand, u64 right operand );
 ;	// subtract supplied 64 bit right hand (64 bit value) op from left hand (512 bit) giving difference
 ;	// returns: zero for no borrow, 1 for borrow (underflow)
 EXTERNDEF		sub_uT64:PROC
@@ -111,7 +111,7 @@ __PrefQ			EQU				0									; Load data into sequence of regs (requires push/pop 
 __UseZ			EQU				1									; Use AVX4 processor features (512 bit registers and instructions)
 __UseY			EQU				0									; Use AVX2 processor features (256 bit registers and instructions)
 __UseX			EQU				0									; Use SIMD/SSE processor features (128 bit registers and instructions)
-__UseQ			EQU				0									; Do not use extensions, use standard x64 bit registers and instructions
+__UseQ			EQU				1									; Do not use extensions, use standard x64 bit registers and instructions
 ;
 __CheckAlign	EQU				0									; User is expected to pass arguments aligned on 64 byte boundaries, 
 																	; This setting enforces that with a check. It should not be necessary, but included to help debugging
@@ -175,6 +175,7 @@ MaskBit7		EQU				B_PTR [ 10000000b ]
 ;			Test passed variable addresses for 64 byte alignment
 ;			Note: Better performance if this is off, but for debugging, maybe have it on
 ;
+
 CheckAlign		MACRO			Raddr
 				LOCAL			ok
 	IF	__CheckAlign
@@ -185,7 +186,22 @@ ok:
 	ENDIF
 				ENDM
 
-
+MemConstants	MACRO
+;		Return codes commonly used.			
+ret0			DD				0								
+ret1			DD				1
+ret_1			DD				-1
+;		Masks commonly used
+mskAll8			DB				255
+mskB0			DB				1
+mskB1			DB				2
+mskB2			DB				4
+mskB3			DB				8
+mskB4			DB				16
+mskB5			DB				32
+mskB6			DB				64
+mskB7			DB				128
+				ENDM
 ;
 ;			Zero a 512 bit destination, conditional assembly based on configuration parameters
 ;
@@ -197,24 +213,24 @@ Zero512			MACRO			dest
 				VMOVDQA64		ZM_PTR [ dest ], ZMM31
 	ELSEIF	__UseY
 				VPXORQ			YMM4, YMM4, YMM4
-				VMOVDQA64		YM_PTR [ dest ] + [ 0 * 8 ], YMM4
-				VMOVDQA64		YM_PTR [ dest ] + [ 4 * 8 ], YMM4
+				VMOVDQA64		YM_PTR [ dest + 0 * 8 ], YMM4
+				VMOVDQA64		YM_PTR [ dest + 4 * 8 ], YMM4
 	ELSEIF	__UseX
 				PXOR			XMM4, XMM4
-				MOVDQA			XM_PTR [ dest ] + [ 0 * 8 ], XMM4
-				MOVDQA			XM_PTR [ dest ] + [ 2 * 8 ], XMM4
-				MOVDQA			XM_PTR [ dest ] + [ 4 * 8 ], XMM4
-				MOVDQA			XM_PTR [ dest ] + [ 6 * 8 ], XMM4			
+				MOVDQA			XM_PTR [ dest + 0 * 8 ], XMM4
+				MOVDQA			XM_PTR [ dest + 2 * 8 ], XMM4
+				MOVDQA			XM_PTR [ dest + 4 * 8 ], XMM4
+				MOVDQA			XM_PTR [ dest + 6 * 8 ], XMM4			
 	ELSE
 				XOR				RAX, RAX
-				MOV				[ dest ] + [ 0 * 8 ], RAX
-				MOV				[ dest ] + [ 1 * 8 ], RAX
-				MOV				[ dest ] + [ 2 * 8 ], RAX
-				MOV				[ dest ] + [ 3 * 8 ], RAX
-				MOV				[ dest ] + [ 4 * 8 ], RAX
-				MOV				[ dest ] + [ 5 * 8 ], RAX
-				MOV				[ dest ] + [ 6 * 8 ], RAX
-				MOV				[ dest ] + [ 7 * 8 ], RAX
+				MOV				[ dest + 0 * 8 ], RAX
+				MOV				[ dest + 1 * 8 ], RAX
+				MOV				[ dest + 2 * 8 ], RAX
+				MOV				[ dest + 3 * 8 ], RAX
+				MOV				[ dest + 4 * 8 ], RAX
+				MOV				[ dest + 5 * 8 ], RAX
+				MOV				[ dest + 6 * 8 ], RAX
+				MOV				[ dest + 7 * 8 ], RAX
 	ENDIF
 				ENDM
 
@@ -230,40 +246,38 @@ Copy512			MACRO			dest, src
 				VMOVDQA64		ZMM31, ZM_PTR [ src ]
 				VMOVDQA64		ZM_PTR [ dest ], ZMM31
 	ELSEIF	__UseY
-				VMOVDQA64		YMM4, YM_PTR [ src ] + [ 0 * 8 ]
-				VMOVDQA64		YM_PTR [ dest ] + [ 0 * 8 ], YMM4	; alternate ymm regs in case pipeline can execute next without waiting for this.
-				VMOVDQA64		YMM5, YM_PTR [ src ] + [ 4 * 8 ]
-				VMOVDQA64		YM_PTR [ dest ] + [ 4 * 8 ], YMM5
+				VMOVDQA64		YMM4, YM_PTR [ src + 0 * 8 ]
+				VMOVDQA64		YM_PTR [ dest + 0 * 8 ], YMM4	; alternate ymm regs in case pipeline can execute next without waiting for this.
+				VMOVDQA64		YMM5, YM_PTR [ src + 4 * 8 ]
+				VMOVDQA64		YM_PTR [ dest + 4 * 8 ], YMM5
 	ELSEIF	__UseX
-				MOVDQA			XMM4, XM_PTR [ src ] + [ 0 * 8 ]
-				MOVDQA			XM_PTR [ dest ] + [ 0 * 8 ], XMM4
-				MOVDQA			XMM3, XM_PTR [ src ] + [ 2 * 8 ]
-				MOVDQA			XM_PTR [ dest ] + [ 2 * 8 ], XMM3
-				MOVDQA			XMM4, XM_PTR [ src ] + [ 4 * 8 ]
-				MOVDQA			XM_PTR [ dest ] + [ 4 * 8 ], XMM4
-				MOVDQA			XMM3, XM_PTR [ src ] + [ 6 * 8 ]
-				MOVDQA			XM_PTR [ dest ] + [ 6 * 8 ], XMM3
+				MOVDQA			XMM4, XM_PTR [ src + 0 * 8 ]
+				MOVDQA			XM_PTR [ dest + 0 * 8 ], XMM4
+				MOVDQA			XMM3, XM_PTR [ src + 2 * 8 ]
+				MOVDQA			XM_PTR [ dest + 2 * 8 ], XMM3
+				MOVDQA			XMM4, XM_PTR [ src + 4 * 8 ]
+				MOVDQA			XM_PTR [ dest + 4 * 8 ], XMM4
+				MOVDQA			XMM3, XM_PTR [ src + 6 * 8 ]
+				MOVDQA			XM_PTR [ dest + 6 * 8 ], XMM3
 	ELSE
-				MOV				RAX, [ src ] + [ 0 * 8 ]
-				MOV				[ dest ] + [ 0 * 8 ], RAX
-				MOV				RAX, [ src ] + [ 1 * 8 ]
-				MOV				[ dest ] + [ 1 * 8 ], RAX
-				MOV				RAX, [ src ] + [ 2 * 8 ]
-				MOV				[ dest ] + [ 2 * 8 ], RAX
-				MOV				RAX, [ src ] + [ 3 * 8 ]
-				MOV				[ dest ] + [ 3 * 8 ], RAX
-				MOV				RAX, [ src ] + [ 4 * 8 ]
-				MOV				[ dest ] + [ 4 * 8 ], RAX
-				MOV				RAX, [ src ] + [ 5 * 8 ]
-				MOV				[ dest ] + [ 5 * 8 ], RAX
-				MOV				RAX, [ src ] + [ 6 * 8 ]
-				MOV				[ dest ] + [ 6 * 8 ], RAX
-				MOV				RAX, [ src ] + [ 7 * 8 ]
-				MOV				[ dest ] + [ 7 * 8 ], RAX
+				MOV				RAX, [ src + 0 * 8 ]
+				MOV				[ dest + 0 * 8 ], RAX
+				MOV				RAX, [ src + 1 * 8 ]
+				MOV				[ dest + 1 * 8 ], RAX
+				MOV				RAX, [ src + 2 * 8 ]
+				MOV				[ dest + 2 * 8 ], RAX
+				MOV				RAX, [ src + 3 * 8 ]
+				MOV				[ dest + 3 * 8 ], RAX
+				MOV				RAX, [ src + 4 * 8 ]
+				MOV				[ dest + 4 * 8 ], RAX
+				MOV				RAX, [ src + 5 * 8 ]
+				MOV				[ dest + 5 * 8 ], RAX
+				MOV				RAX, [ src + 6 * 8 ]
+				MOV				[ dest + 6 * 8 ], RAX
+				MOV				RAX, [ src + 7 * 8 ]
+				MOV				[ dest + 7 * 8 ], RAX
 	ENDIF
 				ENDM
-
-
 
 ;
 ;			Get a GP reg QWORD from within a Z register as specified by mask
