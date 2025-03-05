@@ -313,6 +313,7 @@ S7:				MOV				[RCX + 0 * 8], RAX
 				MOV				[RCX + 7 * 8], R9		
 @@R:
 ;	restore non-volatile regs to as-called condition
+
 				POP				RDI
 				POP				R15
 				POP				R14
@@ -844,7 +845,7 @@ msb_u			PROC			PUBLIC
 				ADD				RAX, RCX					; Word index * 64 + bit index becomes bit index to first non-zero bit (0 to 511, where )
 				RET
 @@zero:
-				MOV				EAX, -1
+				MOV				EAX, ret_1
 				RET
 	ELSE
 
@@ -855,7 +856,7 @@ msb_u			PROC			PUBLIC
 				INC				R10D
 				CMP				R10D, 8
 				JNZ				@F							; Loop through values 0 to 7, then exit
-				MOV				EAX, -1
+				MOV				EAX, ret_1
 				JMP				@@Finished
 @@:
 				BSR				RAX, [ RCX + R10 * 8 ]		; Reverse Scan indexed word for significant bit
@@ -904,7 +905,7 @@ lsb_u			PROC			PUBLIC
 				ADD				RAX, RCX					; Word index * 64 + bit index becomes bit index to first non-zero bit (0 to 511, where )
 				JMP				@ret
 @@zero:
-				MOV				EAX, -1
+				MOV				EAX, ret_1
 @ret:
 				POP				R9
 				RET
@@ -917,7 +918,7 @@ lsb_u			PROC			PUBLIC
 				DEC				R10D
 				CMP				R10D, -1
 				JNE				@F							; Loop through values 7 to 0, then exit
-				MOV				EAX, -1
+				MOV				EAX, ret_1
 				JMP				@@Finished
 @@:
 				BSF				RAX, [ RCX + R10 * 8 ]		; Scan indexed word for significant bit

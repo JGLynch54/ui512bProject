@@ -1,4 +1,4 @@
-Microsoft (R) Macro Assembler (x64) Version 14.43.34808.0   02/24/25 09:25:44
+Microsoft (R) Macro Assembler (x64) Version 14.43.34808.0   03/05/25 12:08:56
 ui512b.asm						     Page 1 - 1
 
 
@@ -113,13 +113,10 @@ ui512b.asm						     Page 1 - 1
 			      C EXTERNDEF		sub_uT64:PROC
 			      C 
 			      C ;			Configuration choices
- = 00000000		      C __PrefZ			EQU				0									; Load into Z, operate with no memory fetch / store un til done
- = 00000000		      C __PrefQ			EQU				0									; Load data into sequence of regs (requires push/pop save/restore)
-			      C ;
  = 00000001		      C __UseZ			EQU				1									; Use AVX4 processor features (512 bit registers and instructions)
  = 00000000		      C __UseY			EQU				0									; Use AVX2 processor features (256 bit registers and instructions)
  = 00000000		      C __UseX			EQU				0									; Use SIMD/SSE processor features (128 bit registers and instructions)
- = 00000001		      C __UseQ			EQU				1									; Do not use extensions, use standard x64 bit registers and instructions
+ = 00000000		      C __UseQ			EQU				0									; Do not use extensions, use standard x64 bit registers and instructions
 			      C ;
  = 00000000		      C __CheckAlign	EQU				0									; User is expected to pass arguments aligned on 64 byte boundaries, 
 			      C 																	; This setting enforces that with a check. It should not be necessary, but included to help debugging
@@ -139,9 +136,11 @@ ui512b.asm						     Page 1 - 1
  = 00000000		      C CPEQ			EQU				0
  = 00000001		      C CPLT			EQU				1
  = 00000002		      C CPLE			EQU				2
+ = 00000003		      C CPFALSE			EQU				3
  = 00000004		      C CPNE			EQU				4
  = 00000005		      C CPGE			EQU				5
  = 00000006		      C CPGT			EQU				6
+ = 00000007		      C CPTRUE			EQU				7
 			      C 
 			      C ;			Mask values (for k reg) used to select particulare QWORDS from X, Y, or Z simd regs
  = 00000001		      C MaskBit0		EQU				B_PTR [ 00000001b ]
@@ -210,6 +209,7 @@ ui512b.asm						     Page 1 - 1
 			      C mskB6			DB				64
 			      C mskB7			DB				128
 			      C 				ENDM
+			      C 
 			      C ;
 			      C ;			Zero a 512 bit destination, conditional assembly based on configuration parameters
 			      C ;
@@ -713,11 +713,11 @@ ui512b.asm						     Page 1 - 1
  0000028B  48/ 03 C1						ADD				RAX, RCX					; Word index * 64 + bit index becomes bit index to first non-zero bit (0 to 511, where )
  0000028E  C3							RET
  0000028F			@@zero:
- 0000028F  B8 FFFFFFFF						MOV				EAX, -1
- 00000294  C3							RET
+ 0000028F  8B 05 00000008 R					MOV				EAX, ret_1
+ 00000295  C3							RET
 					ELSE
 					ENDIF
- 00000295			msb_u			ENDP
+ 00000296			msb_u			ENDP
 
 				;--------------------------------------------------------------------------------------------------------------------------------------------------------------
 				;			lsb_u		-	find least significant bit in supplied source 512bit (8 QWORDS)
@@ -727,47 +727,47 @@ ui512b.asm						     Page 1 - 1
 				;			Note:	a returned zero means the significant bit is bit0 of the eighth word of the 512bit source parameter; (the right most bit)
 				;					a returned 511 means bit63 of the first word (the left most bit)
 
- 00000295			lsb_u			PROC			PUBLIC
+ 00000296			lsb_u			PROC			PUBLIC
 								
 								CheckAlign		RCX
 
 					IF __UseZ
- 00000295  41/ 51						Push			R9
- 00000297  62 61 FD 48/ 6F					VMOVDQA64		ZMM31, ZM_PTR [RCX]			; Load source 
+ 00000296  41/ 51						Push			R9
+ 00000298  62 61 FD 48/ 6F					VMOVDQA64		ZMM31, ZM_PTR [RCX]			; Load source 
 	   39
- 0000029D  62 92 85 40/ 27					VPTESTMQ		K1, ZMM31, ZMM31			; find non-zero words (if any)
+ 0000029E  62 92 85 40/ 27					VPTESTMQ		K1, ZMM31, ZMM31			; find non-zero words (if any)
 	   CF
- 000002A3  C5 F9/ 93 C1						KMOVB			EAX, K1
- 000002A7  83 F8 00						CMP				EAX, 0						; exit with -1 if all eight qwords are zero (no significant bit)
- 000002AA  74 33						JE				@@zero
- 000002AC  0F BD C8						BSR				ECX, EAX					; determine index of word from last non-zero bit in mask
- 000002AF  48/ C7 C0						MOV				RAX, 7
+ 000002A4  C5 F9/ 93 C1						KMOVB			EAX, K1
+ 000002A8  83 F8 00						CMP				EAX, 0						; exit with -1 if all eight qwords are zero (no significant bit)
+ 000002AB  74 33						JE				@@zero
+ 000002AD  0F BD C8						BSR				ECX, EAX					; determine index of word from last non-zero bit in mask
+ 000002B0  48/ C7 C0						MOV				RAX, 7
 	   00000007
- 000002B6  48/ 2B C1						SUB				RAX, RCX					; convert index to offset
- 000002B9  48/ C1 E0 06						SHL				RAX, 6
- 000002BD  4D/ 33 C9						XOR				R9, R9
- 000002C0  49/ FF C1						INC				R9
- 000002C3  49/ D3 E1						SHL				R9, CL
- 000002C6  C4 C1 79/ 92 D1					KMOVB			K2, R9
- 000002CB  62 62 FD CA/ 8B					VPCOMPRESSQ		ZMM0 {k2}{z}, ZMM31
+ 000002B7  48/ 2B C1						SUB				RAX, RCX					; convert index to offset
+ 000002BA  48/ C1 E0 06						SHL				RAX, 6
+ 000002BE  4D/ 33 C9						XOR				R9, R9
+ 000002C1  49/ FF C1						INC				R9
+ 000002C4  49/ D3 E1						SHL				R9, CL
+ 000002C7  C4 C1 79/ 92 D1					KMOVB			K2, R9
+ 000002CC  62 62 FD CA/ 8B					VPCOMPRESSQ		ZMM0 {k2}{z}, ZMM31
 	   F8
- 000002D1  C4 E1 F9/ 7E C1					VMOVQ			RCX, XMM0					; extract the non-zero word
- 000002D6  48/ 0F BD C9						BSR				RCX, RCX					; get the index of the non-zero bit within the word
- 000002DA  48/ 03 C1						ADD				RAX, RCX					; Word index * 64 + bit index becomes bit index to first non-zero bit (0 to 511, where )
- 000002DD  EB 05						JMP				@ret
- 000002DF			@@zero:
- 000002DF  B8 FFFFFFFF						MOV				EAX, -1
- 000002E4			@ret:
- 000002E4  41/ 59						POP				R9
- 000002E6  C3							RET
+ 000002D2  C4 E1 F9/ 7E C1					VMOVQ			RCX, XMM0					; extract the non-zero word
+ 000002D7  48/ 0F BD C9						BSR				RCX, RCX					; get the index of the non-zero bit within the word
+ 000002DB  48/ 03 C1						ADD				RAX, RCX					; Word index * 64 + bit index becomes bit index to first non-zero bit (0 to 511, where )
+ 000002DE  EB 06						JMP				@ret
+ 000002E0			@@zero:
+ 000002E0  8B 05 00000008 R					MOV				EAX, ret_1
+ 000002E6			@ret:
+ 000002E6  41/ 59						POP				R9
+ 000002E8  C3							RET
 					ELSE
 					ENDIF
- 000002E7			lsb_u			ENDP
+ 000002E9			lsb_u			ENDP
 
 
 
 				END
-Microsoft (R) Macro Assembler (x64) Version 14.43.34808.0   02/24/25 09:25:44
+Microsoft (R) Macro Assembler (x64) Version 14.43.34808.0   03/05/25 12:08:56
 ui512b.asm						     Symbols 2 - 1
 
 
@@ -791,7 +791,7 @@ Segments:
 
 CONST  . . . . . . . . . . . . .	 00000000 16	  'CONST'	 ReadOnly
 aligned64  . . . . . . . . . . .	 00000040 64	  
-ui512b . . . . . . . . . . . . .	 000002E7 16	  'CODE'	
+ui512b . . . . . . . . . . . . .	 000002E9 16	  'CODE'	
 
 
 Procedures, parameters, and locals:
@@ -799,10 +799,10 @@ Procedures, parameters, and locals:
                 N a m e                 Type     Value    Attr
 
 and_u  . . . . . . . . . . . . .	P 	 00000219 ui512b	Length= 00000013 Public
-lsb_u  . . . . . . . . . . . . .	P 	 00000295 ui512b	Length= 00000052 Public
-  @@zero . . . . . . . . . . . .	L 	 000002DF ui512b	
-  @ret . . . . . . . . . . . . .	L 	 000002E4 ui512b	
-msb_u  . . . . . . . . . . . . .	P 	 00000256 ui512b	Length= 0000003F Public
+lsb_u  . . . . . . . . . . . . .	P 	 00000296 ui512b	Length= 00000053 Public
+  @@zero . . . . . . . . . . . .	L 	 000002E0 ui512b	
+  @ret . . . . . . . . . . . . .	L 	 000002E6 ui512b	
+msb_u  . . . . . . . . . . . . .	P 	 00000256 ui512b	Length= 00000040 Public
   @@zero . . . . . . . . . . . .	L 	 0000028F ui512b	
 not_u  . . . . . . . . . . . . .	P 	 0000023F ui512b	Length= 00000017 Public
 or_u . . . . . . . . . . . . . .	P 	 0000022C ui512b	Length= 00000013 Public
@@ -836,11 +836,13 @@ Symbols:
 
 B_PTR  . . . . . . . . . . . . .	Text   	 BYTE PTR
 CPEQ . . . . . . . . . . . . . .	Number	 00000000h   
+CPFALSE  . . . . . . . . . . . .	Number	 00000003h   
 CPGE . . . . . . . . . . . . . .	Number	 00000005h   
 CPGT . . . . . . . . . . . . . .	Number	 00000006h   
 CPLE . . . . . . . . . . . . . .	Number	 00000002h   
 CPLT . . . . . . . . . . . . . .	Number	 00000001h   
 CPNE . . . . . . . . . . . . . .	Number	 00000004h   
+CPTRUE . . . . . . . . . . . . .	Number	 00000007h   
 D_PTR  . . . . . . . . . . . . .	Text   	 DWORD PTR
 MaskBit0 . . . . . . . . . . . .	Number	 00000001h   
 MaskBit1 . . . . . . . . . . . .	Number	 00000002h   
@@ -856,9 +858,7 @@ XM_PTR . . . . . . . . . . . . .	Text   	 XMMWORD PTR
 YM_PTR . . . . . . . . . . . . .	Text   	 YMMWORD PTR
 ZM_PTR . . . . . . . . . . . . .	Text   	 ZMMWORD PTR
 __CheckAlign . . . . . . . . . .	Number	 00000000h   
-__PrefQ  . . . . . . . . . . . .	Number	 00000000h   
-__PrefZ  . . . . . . . . . . . .	Number	 00000000h   
-__UseQ . . . . . . . . . . . . .	Number	 00000001h   
+__UseQ . . . . . . . . . . . . .	Number	 00000000h   
 __UseX . . . . . . . . . . . . .	Number	 00000000h   
 __UseY . . . . . . . . . . . . .	Number	 00000000h   
 __UseZ . . . . . . . . . . . . .	Number	 00000001h   

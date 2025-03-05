@@ -105,13 +105,10 @@ EXTERNDEF		sub_u:PROC
 EXTERNDEF		sub_uT64:PROC
 
 ;			Configuration choices
-__PrefZ			EQU				0									; Load into Z, operate with no memory fetch / store un til done
-__PrefQ			EQU				0									; Load data into sequence of regs (requires push/pop save/restore)
-;
 __UseZ			EQU				1									; Use AVX4 processor features (512 bit registers and instructions)
 __UseY			EQU				0									; Use AVX2 processor features (256 bit registers and instructions)
 __UseX			EQU				0									; Use SIMD/SSE processor features (128 bit registers and instructions)
-__UseQ			EQU				1									; Do not use extensions, use standard x64 bit registers and instructions
+__UseQ			EQU				0									; Do not use extensions, use standard x64 bit registers and instructions
 ;
 __CheckAlign	EQU				0									; User is expected to pass arguments aligned on 64 byte boundaries, 
 																	; This setting enforces that with a check. It should not be necessary, but included to help debugging
@@ -131,9 +128,11 @@ m64BCST			EQU				QWORD BCST
 CPEQ			EQU				0
 CPLT			EQU				1
 CPLE			EQU				2
+CPFALSE			EQU				3
 CPNE			EQU				4
 CPGE			EQU				5
 CPGT			EQU				6
+CPTRUE			EQU				7
 
 ;			Mask values (for k reg) used to select particulare QWORDS from X, Y, or Z simd regs
 MaskBit0		EQU				B_PTR [ 00000001b ]
@@ -202,6 +201,7 @@ mskB5			DB				32
 mskB6			DB				64
 mskB7			DB				128
 				ENDM
+
 ;
 ;			Zero a 512 bit destination, conditional assembly based on configuration parameters
 ;
