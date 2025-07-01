@@ -1,4 +1,4 @@
-.nolist
+.NOLIST
 ;
 ;			ui512aMacros
 ;
@@ -55,9 +55,9 @@
 ;				OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 ;				SOFTWARE.
 ;
-.list
+.LIST
 IFNDEF			ui512aMacros_INC
-ui512aMacros_INC EQU		<1>
+ui512aMacros_INC EQU			<1>
 
 ;           header file equivalent extern declarations
 ;			EXTERN "C" signatures (from ui512a.asm)
@@ -143,6 +143,9 @@ MaskBit4		EQU				B_PTR [ 00010000b ]
 MaskBit5		EQU				B_PTR [ 00100000b ]
 MaskBit6		EQU				B_PTR [ 01000000b ]
 MaskBit7		EQU				B_PTR [ 10000000b ]
+
+;			Another way to get masks
+kMask			RECORD			b8:1, b7:1, b6:1, b5:1, b4:1, b3:1, b2:1, b1:1, b0:1
 ;==========================================================================================
 ;           Notes on x64 calling conventions        aka "fast call"
 ; ref: https://learn.microsoft.com/en-us/cpp/build/x64-calling-convention?view=msvc-170
@@ -174,18 +177,20 @@ MaskBit7		EQU				B_PTR [ 10000000b ]
 ;			Test passed variable addresses for 64 byte alignment
 ;			Note: Better performance if this is off, but for debugging, maybe have it on
 ;
-
 CheckAlign		MACRO			Raddr
 				LOCAL			ok
 	IF	__CheckAlign
 				TEST			Raddr, 63							; Is specified param aligned 64?
 				JZ				ok									; Yes, passes test, continue
-				INT				0									; No, fails, break (can substitute other exception handling)
+				INT				0									; No? fails, break (can substitute other exception handling)
 ok:
 	ENDIF
 				ENDM
 
 MemConstants	MACRO
+;
+zeroQ			DQ				0
+mskHex100		DD				0100h
 ;		Return codes commonly used.			
 ret0			DD				0								
 ret1			DD				1
@@ -200,83 +205,91 @@ mskB4			DB				16
 mskB5			DB				32
 mskB6			DB				64
 mskB7			DB				128
+;
+				ALIGN			8									; realign
 				ENDM
 
 ;
 ;			Zero a 512 bit destination, conditional assembly based on configuration parameters
 ;
-
-Zero512			MACRO			dest
+Zero512			MACRO			dest:REQ
+	IF		__UseZ
 				CheckAlign		dest
-	IF	__UseZ
 				VPXORQ			ZMM31, ZMM31, ZMM31
 				VMOVDQA64		ZM_PTR [ dest ], ZMM31
 	ELSEIF	__UseY
+				CheckAlign		dest
 				VPXORQ			YMM4, YMM4, YMM4
-				VMOVDQA64		YM_PTR [ dest + 0 * 8 ], YMM4
-				VMOVDQA64		YM_PTR [ dest + 4 * 8 ], YMM4
+				FOR				idx, < 0, 4 >
+				VMOVDQA64		YM_PTR [ dest ] [ idx * 8 ], YMM4
+				ENDM
 	ELSEIF	__UseX
+				CheckAlign		dest
 				PXOR			XMM4, XMM4
-				MOVDQA			XM_PTR [ dest + 0 * 8 ], XMM4
-				MOVDQA			XM_PTR [ dest + 2 * 8 ], XMM4
-				MOVDQA			XM_PTR [ dest + 4 * 8 ], XMM4
-				MOVDQA			XM_PTR [ dest + 6 * 8 ], XMM4			
+				FOR				idx, < 0, 2, 4, 6 >
+				MOVDQA			XM_PTR [ dest ] [ idx * 8 ], XMM4
+				ENDM		
 	ELSE
 				XOR				RAX, RAX
-				MOV				[ dest + 0 * 8 ], RAX
-				MOV				[ dest + 1 * 8 ], RAX
-				MOV				[ dest + 2 * 8 ], RAX
-				MOV				[ dest + 3 * 8 ], RAX
-				MOV				[ dest + 4 * 8 ], RAX
-				MOV				[ dest + 5 * 8 ], RAX
-				MOV				[ dest + 6 * 8 ], RAX
-				MOV				[ dest + 7 * 8 ], RAX
+				FOR				idx,  < 0, 1, 2, 3, 4, 5, 6, 7 >
+				MOV				Q_PTR [ dest ] [ idx * 8 ], RAX
+				ENDM
 	ENDIF
 				ENDM
 
+;
+;			Zero a 512 bit destination, always use Q_PTR, avoids clock penalty from using SIMD
+;
+Zero512Q		MACRO			dest:REQ
+				XOR				RAX, RAX
+				FOR				idx,  < 0, 1, 2, 3, 4, 5, 6, 7 >
+				MOV				Q_PTR [ dest ] [ idx * 8 ], RAX
+				ENDM
 
+				ENDM
 ;
 ;			Copy a 512 bit source to destination, conditional assembly based on configuration parameters
 ;
-
-Copy512			MACRO			dest, src
+Copy512			MACRO			dest:REQ, src:REQ
+	IF		__UseZ 
 				CheckAlign		dest
 				CheckAlign		src
-	IF	__UseZ
 				VMOVDQA64		ZMM31, ZM_PTR [ src ]
 				VMOVDQA64		ZM_PTR [ dest ], ZMM31
 	ELSEIF	__UseY
+				CheckAlign		dest
+				CheckAlign		src
 				VMOVDQA64		YMM4, YM_PTR [ src + 0 * 8 ]
-				VMOVDQA64		YM_PTR [ dest + 0 * 8 ], YMM4	; alternate ymm regs in case pipeline can execute next without waiting for this.
-				VMOVDQA64		YMM5, YM_PTR [ src + 4 * 8 ]
-				VMOVDQA64		YM_PTR [ dest + 4 * 8 ], YMM5
+				VMOVDQA64		YM_PTR [ dest ] [ 0 * 8 ], YMM4	; alternate ymm regs in case pipeline can execute next without waiting for this.
+				VMOVDQA64		YMM5, YM_PTR [ src ] [ 4 * 8 ]
+				VMOVDQA64		YM_PTR [ dest ] [ 4 * 8 ], YMM5
 	ELSEIF	__UseX
-				MOVDQA			XMM4, XM_PTR [ src + 0 * 8 ]
-				MOVDQA			XM_PTR [ dest + 0 * 8 ], XMM4
-				MOVDQA			XMM3, XM_PTR [ src + 2 * 8 ]
-				MOVDQA			XM_PTR [ dest + 2 * 8 ], XMM3
-				MOVDQA			XMM4, XM_PTR [ src + 4 * 8 ]
-				MOVDQA			XM_PTR [ dest + 4 * 8 ], XMM4
-				MOVDQA			XMM3, XM_PTR [ src + 6 * 8 ]
-				MOVDQA			XM_PTR [ dest + 6 * 8 ], XMM3
+				CheckAlign		dest
+				CheckAlign		src
+				MOVDQA			XMM4, XM_PTR [ src ] [ 0 * 8 ]
+				MOVDQA			XM_PTR [ dest ] [ 0 * 8 ], XMM4
+				MOVDQA			XMM3, XM_PTR [ src ] [ 2 * 8 ]
+				MOVDQA			XM_PTR [ dest ] [ 2 * 8 ], XMM3
+				MOVDQA			XMM4, XM_PTR [ src ] [ 4 * 8 ]
+				MOVDQA			XM_PTR [ dest ] [ 4 * 8 ], XMM4
+				MOVDQA			XMM3, XM_PTR [ src ] [ 6 * 8 ]
+				MOVDQA			XM_PTR [ dest ] [ 6 * 8 ], XMM3
 	ELSE
-				MOV				RAX, [ src + 0 * 8 ]
-				MOV				[ dest + 0 * 8 ], RAX
-				MOV				RAX, [ src + 1 * 8 ]
-				MOV				[ dest + 1 * 8 ], RAX
-				MOV				RAX, [ src + 2 * 8 ]
-				MOV				[ dest + 2 * 8 ], RAX
-				MOV				RAX, [ src + 3 * 8 ]
-				MOV				[ dest + 3 * 8 ], RAX
-				MOV				RAX, [ src + 4 * 8 ]
-				MOV				[ dest + 4 * 8 ], RAX
-				MOV				RAX, [ src + 5 * 8 ]
-				MOV				[ dest + 5 * 8 ], RAX
-				MOV				RAX, [ src + 6 * 8 ]
-				MOV				[ dest + 6 * 8 ], RAX
-				MOV				RAX, [ src + 7 * 8 ]
-				MOV				[ dest + 7 * 8 ], RAX
+				FOR				idx, < 0, 1, 2, 3, 4, 5, 6, 7 >
+				MOV				RAX, Q_PTR [ src ] [ idx * 8 ]
+				MOV				Q_PTR [ dest ] [ idx * 8 ], RAX
+				ENDM
 	ENDIF
+				ENDM
+;
+;			Copy a 512 bit source to destination, always use Q_PTR, avoids clock penalty from using SIMD
+;
+Copy512Q		MACRO			dest:REQ, src:REQ
+				FOR				idx, < 0, 1, 2, 3, 4, 5, 6, 7 >
+				MOV				RAX, Q_PTR [ src ] [ idx * 8 ]
+				MOV				Q_PTR [ dest ] [ idx * 8 ], RAX
+				ENDM
+
 				ENDM
 
 ;
@@ -285,7 +298,6 @@ Copy512			MACRO			dest, src
 ;			Example usage: GetZatIdx R11, ZMM1, MaskBit2 or SetZatIdx ZMM1, R12, [ R9 ]  (where R9 is a bit mask, not an integer index)
 ;			Note: These are req to reg ops; no memory fetches (other than instructions from pipeline)
 ;
-
 GetZatMask		MACRO			dest, src, mask
 				LEA				RAX,  mask
 				KMOVB			k1, RAX
@@ -299,7 +311,6 @@ GetZatMask		MACRO			dest, src, mask
 ;			Example usage: SetZatIdx ZMM1, R8, MaskBit2
 ;			Note: These are req to reg ops; no memory fetches (other than instructions from pipeline)
 ;
-
 SetZatMask		MACRO			dest, src, mask
 				LEA				RAX, mask
 				KMOVB			k1, RAX

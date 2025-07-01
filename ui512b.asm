@@ -85,24 +85,24 @@ shr_u			PROC			PUBLIC
 				CheckAlign		RCX
 				CheckAlign		RDX
 
-				CMP				R8W, 0							; handle edge case, shift zero bits
-				JNE				@F
-				CMP				RCX, RDX
-				JE				@@ret							; destination is the same as the source: no copy needed
-				Copy512			RCX, RDX						; no shift, just copy (destination, source already in regs)
-				JMP				@@ret
-@@:
 				CMP				R8W, 512						; handle edge case, shift 512 or more bits
 				JL				@F
 				Zero512			RCX								; zero destination
-				JMP				@@ret
+				RET
+@@:
+				AND				R8, 511							; ensure no high bits above shift count
+				JNZ				@F								; handle edge case, zero bits to shift
+				CMP				RCX, RDX
+				JE				@@ret							; destination is the same as the source: no copy needed
+				Copy512			RCX, RDX						; no shift, just copy (destination, source already in regs)
+				RET
 @@:
 
 	IF	__UseZ
 				VMOVDQA64		ZMM31, ZM_PTR [ RDX ]			; load the 8 qwords into zmm reg (note: word order)
 				MOVZX			RAX, R8W
 				AND				AX, 03fh						; limit shift count to 63 (shifting bits only here, not words)
-				JZ				@F								; must be multiple of 64 bits to shift, no bits, just words to shift
+				JZ				@F								; if true, must be multiple of 64 bits to shift, no bits, just words to shift
 				VPBROADCASTQ	ZMM29, RAX						; Nr bits to shift right
 				VPXORQ			ZMM28, ZMM28, ZMM28				; 
 				VALIGNQ			ZMM30, ZMM31, ZMM28, 7			; shift copy of words left one word (to get low order bits aligned for shift)
@@ -110,12 +110,10 @@ shr_u			PROC			PUBLIC
 @@:
 ; with the bits shifted within the words, if the desired shift is more than 64 bits, word shifts are required
 ; verify Nr of word shift is zero to seven, use it as index into jump table; jump to appropriate shift
-				SHR				R8W, 6							; divide Nr bits to shift by 64 giving Nr words to shift
-				AND				R8, 07h							; probably not necessary, but ensures a number 0 to 7 for jump table
-				SHL				R8W, 3							; multiply by 8 to give QWORD index into jump table
+
+				SHR				R8W, 6							; divide Nr bits to shift by 64 giving Nr words to shift (can only be 0-7 based on above validation)
 				LEA				RAX, @jt						; address of jump table
-				ADD				R8, RAX							; add index
-				JMP				Q_PTR [ R8 ]					; jump to routine that shifts the appropriate Nr words
+				JMP				Q_PTR [ RAX ] [ R8 * 8 ]		; jump to routine that shifts the appropriate Nr words
 @jt:
 				QWORD			@@E, @@1, @@2, @@3, @@4, @@5, @@6, @@7
 @@1:			VALIGNQ			ZMM31, ZMM31, ZMM28, 7			; shifts words in ZMM31 right 7, fills with zero, resulting seven plus filled zero to ZMM31
@@ -133,8 +131,7 @@ shr_u			PROC			PUBLIC
 @@7:			VALIGNQ			ZMM31, ZMM31, ZMM28, 1
 
 @@E:			VMOVDQA64		ZM_PTR [ RCX ], ZMM31			; store result at callers destination
-@@ret:
-				RET	
+@@ret:			RET	
 
 	ELSE
 
@@ -146,14 +143,14 @@ shr_u			PROC			PUBLIC
 				PUSH			RDI
 				PUSH			RCX
 ;	load sequential regs with source 8 qwords
-				MOV				R9, [RDX + 0 * 8]
-				MOV				R10, [RDX + 1 * 8]
-				MOV				R11, [RDX + 2 * 8]
-				MOV				R12, [RDX + 3 * 8]
-				MOV				R13, [RDX + 4 * 8]
-				MOV				R14, [RDX + 5 * 8]
-				MOV				R15, [RDX + 6 * 8]
-				MOV				RDI, [RDX + 7 * 8]
+				MOV				R9, Q_PTR [ RDX ] [ 0 * 8 ]
+				MOV				R10, Q_PTR [ RDX ] [ 1 * 8 ]
+				MOV				R11, Q_PTR [ RDX ] [ 2 * 8 ]
+				MOV				R12, Q_PTR [ RDX ] [ 3 * 8 ]
+				MOV				R13, Q_PTR [ RDX ] [ 4 * 8 ]
+				MOV				R14, Q_PTR [ RDX ] [ 5 * 8 ]
+				MOV				R15, Q_PTR [ RDX ] [ 6 * 8 ]
+				MOV				RDI, Q_PTR [ RDX ] [ 7 * 8 ]
 ;	determine if / how many bits to shift
 				MOVZX			RCX, R8W
 				AND				CX, 03fh
@@ -223,7 +220,7 @@ shr_u			PROC			PUBLIC
 				; with the bits shifted within the words, if the desired shift is more than 64 bits, word shifts are required
 				; verify Nr of word shift is zero to seven, use it as index into jump table; jump to appropriate shift
 				SHR				R8W, 6
-				AND				R8, 07h 
+				AND				R8, 7
 				SHL				R8W, 3
 				LEA				RAX, jtbl
 				ADD				R8, RAX
@@ -233,87 +230,86 @@ shr_u			PROC			PUBLIC
 jtbl:
 				QWORD			S0, S1, S2, S3, S4, S5, S6, S7
 S0:				; no word shift, just bits, so store words in destination in the same order as they are
-				MOV				[RCX + 0 * 8], R9
-				MOV				[RCX + 1 * 8], R10
-				MOV				[RCX + 2 * 8], R11
-				MOV				[RCX + 3 * 8], R12
-				MOV				[RCX + 4 * 8], R13
-				MOV				[RCX + 5 * 8], R14
-				MOV				[RCX + 6 * 8], R15
-				MOV				[RCX + 7 * 8], RDI	
+				MOV				Q_PTR [ RCX ] [ 0 * 8 ], R9
+				MOV				Q_PTR [ RCX ] [ 1 * 8 ], R10
+				MOV				Q_PTR [ RCX ] [ 2 * 8 ], R11
+				MOV				Q_PTR [ RCX ] [ 3 * 8 ], R12
+				MOV				Q_PTR [ RCX ] [ 4 * 8 ], R13
+				MOV				Q_PTR [ RCX ] [ 5 * 8 ], R14
+				MOV				Q_PTR [ RCX ] [ 6 * 8 ], R15
+				MOV				Q_PTR [ RCX ] [ 7 * 8 ], RDI	
 				JMP				@@R
 S1:
-				MOV				[RCX + 0 * 8], RAX
-				MOV				[RCX + 1 * 8], R9
-				MOV				[RCX + 2 * 8], R10
-				MOV				[RCX + 3 * 8], R11
-				MOV				[RCX + 4 * 8], R12
-				MOV				[RCX + 5 * 8], R13
-				MOV				[RCX + 6 * 8], R14
-				MOV				[RCX + 7 * 8], R15	
+				MOV				Q_PTR [ RCX ] [ 0 * 8 ], RAX
+				MOV				Q_PTR [ RCX ] [ 1 * 8 ], R9
+				MOV				Q_PTR [ RCX ] [ 2 * 8 ], R10
+				MOV				Q_PTR [ RCX ] [ 3 * 8 ], R11
+				MOV				Q_PTR [ RCX ] [ 4 * 8 ], R12
+				MOV				Q_PTR [ RCX ] [ 5 * 8 ], R13
+				MOV				Q_PTR [ RCX ] [ 6 * 8 ], R14
+				MOV				Q_PTR [ RCX ] [ 7 * 8 ], R15	
 				JMP				@@R
 S2:
-				MOV				[RCX + 0 * 8], RAX
-				MOV				[RCX + 1 * 8], RAX
-				MOV				[RCX + 2 * 8], R9
-				MOV				[RCX + 3 * 8], R10
-				MOV				[RCX + 4 * 8], R11
-				MOV				[RCX + 5 * 8], R12
-				MOV				[RCX + 6 * 8], R13
-				MOV				[RCX + 7 * 8], R14	
+				MOV				Q_PTR [ RCX ] [ 0 * 8 ], RAX
+				MOV				Q_PTR [ RCX ] [ 1 * 8 ], RAX
+				MOV				Q_PTR [ RCX ] [ 2 * 8 ], R9
+				MOV				Q_PTR [ RCX ] [ 3 * 8 ], R10
+				MOV				Q_PTR [ RCX ] [ 4 * 8 ], R11
+				MOV				Q_PTR [ RCX ] [ 5 * 8 ], R12
+				MOV				Q_PTR [ RCX ] [ 6 * 8 ], R13
+				MOV				Q_PTR [ RCX ] [ 7 * 8 ], R14	
 				JMP				@@R
 
-S3:				MOV				[RCX + 0 * 8], RAX
-				MOV				[RCX + 1 * 8], RAX
-				MOV				[RCX + 2 * 8], RAX
-				MOV				[RCX + 3 * 8], R9
-				MOV				[RCX + 4 * 8], R10
-				MOV				[RCX + 5 * 8], R11
-				MOV				[RCX + 6 * 8], R12
-				MOV				[RCX + 7 * 8], R13	
+S3:				MOV				Q_PTR [ RCX ] [ 0 * 8 ], RAX
+				MOV				Q_PTR [ RCX ] [ 1 * 8 ], RAX
+				MOV				Q_PTR [ RCX ] [ 2 * 8 ], RAX
+				MOV				Q_PTR [ RCX ] [ 3 * 8 ], R9
+				MOV				Q_PTR [ RCX ] [ 4 * 8 ], R10
+				MOV				Q_PTR [ RCX ] [ 5 * 8 ], R11
+				MOV				Q_PTR [ RCX ] [ 6 * 8 ], R12
+				MOV				Q_PTR [ RCX ] [ 7 * 8 ], R13	
 				JMP				@@R
 
-S4:				MOV				[RCX + 0 * 8], RAX
-				MOV				[RCX + 1 * 8], RAX
-				MOV				[RCX + 2 * 8], RAX
-				MOV				[RCX + 3 * 8], RAX
-				MOV				[RCX + 4 * 8], R9
-				MOV				[RCX + 5 * 8], R10
-				MOV				[RCX + 6 * 8], R11
-				MOV				[RCX + 7 * 8], R12			
+S4:				MOV				Q_PTR [ RCX ] [ 0 * 8 ], RAX
+				MOV				Q_PTR [ RCX ] [ 1 * 8 ], RAX
+				MOV				Q_PTR [ RCX ] [ 2 * 8 ], RAX
+				MOV				Q_PTR [ RCX ] [ 3 * 8 ], RAX
+				MOV				Q_PTR [ RCX ] [ 4 * 8 ], R9
+				MOV				Q_PTR [ RCX ] [ 5 * 8 ], R10
+				MOV				Q_PTR [ RCX ] [ 6 * 8 ], R11
+				MOV				Q_PTR [ RCX ] [ 7 * 8 ], R12			
 				JMP				@@R
 
-S5:				MOV				[RCX + 0 * 8], RAX
-				MOV				[RCX + 1 * 8], RAX
-				MOV				[RCX + 2 * 8], RAX
-				MOV				[RCX + 3 * 8], RAX
-				MOV				[RCX + 4 * 8], RAX
-				MOV				[RCX + 5 * 8], R9
-				MOV				[RCX + 6 * 8], R10
-				MOV				[RCX + 7 * 8], R11	
+S5:				MOV				Q_PTR [ RCX ] [ 0 * 8 ], RAX
+				MOV				Q_PTR [ RCX ] [ 1 * 8 ], RAX
+				MOV				Q_PTR [ RCX ] [ 2 * 8 ], RAX
+				MOV				Q_PTR [ RCX ] [ 3 * 8 ], RAX
+				MOV				Q_PTR [ RCX ] [ 4 * 8 ], RAX
+				MOV				Q_PTR [ RCX ] [ 5 * 8 ], R9
+				MOV				Q_PTR [ RCX ] [ 6 * 8 ], R10
+				MOV				Q_PTR [ RCX ] [ 7 * 8 ], R11	
 				JMP				@@R
 
-S6:				MOV				[RCX + 0 * 8], RAX
-				MOV				[RCX + 1 * 8], RAX
-				MOV				[RCX + 2 * 8], RAX
-				MOV				[RCX + 3 * 8], RAX
-				MOV				[RCX + 4 * 8], RAX
-				MOV				[RCX + 5 * 8], RAX
-				MOV				[RCX + 6 * 8], R9
-				MOV				[RCX + 7 * 8], R10	
+S6:				MOV				Q_PTR [ RCX ] [ 0 * 8 ], RAX
+				MOV				Q_PTR [ RCX ] [ 1 * 8 ], RAX
+				MOV				Q_PTR [ RCX ] [ 2 * 8 ], RAX
+				MOV				Q_PTR [ RCX ] [ 3 * 8 ], RAX
+				MOV				Q_PTR [ RCX ] [ 4 * 8 ], RAX
+				MOV				Q_PTR [ RCX ] [ 5 * 8 ], RAX
+				MOV				Q_PTR [ RCX ] [ 6 * 8 ], R9
+				MOV				Q_PTR [ RCX ] [ 7 * 8 ], R10	
 				JMP				@@R
 
-S7:				MOV				[RCX + 0 * 8], RAX
-				MOV				[RCX + 1 * 8], RAX
-				MOV				[RCX + 2 * 8], RAX
-				MOV				[RCX + 3 * 8], RAX
-				MOV				[RCX + 4 * 8], RAX
-				MOV				[RCX + 5 * 8], RAX
-				MOV				[RCX + 6 * 8], RAX
-				MOV				[RCX + 7 * 8], R9		
+S7:				MOV				Q_PTR [ RCX ] [ 0 * 8 ], RAX
+				MOV				Q_PTR [ RCX ] [ 1 * 8 ], RAX
+				MOV				Q_PTR [ RCX ] [ 2 * 8 ], RAX
+				MOV				Q_PTR [ RCX ] [ 3 * 8 ], RAX
+				MOV				Q_PTR [ RCX ] [ 4 * 8 ], RAX
+				MOV				Q_PTR [ RCX ] [ 5 * 8 ], RAX
+				MOV				Q_PTR [ RCX ] [ 6 * 8 ], RAX
+				MOV				Q_PTR [ RCX ] [ 7 * 8 ], R9		
 @@R:
 ;	restore non-volatile regs to as-called condition
-
 				POP				RDI
 				POP				R15
 				POP				R14
@@ -339,16 +335,16 @@ shl_u			PROC			PUBLIC
 				CheckAlign		RCX
 				CheckAlign		RDX
 
-				CMP				R8W, 0						; handle edge case, shift zero bits
-				JNE				@F
-				CMP				RCX, RDX
-				JE				@@ret
-				Copy512			RCX, RDX					; no shift, just copy (destination, source already in regs)
-				JMP				@@ret
-@@:
 				CMP				R8W, 512					; handle edge case, shift 512 or more bits
 				JL				@F
 				Zero512			RCX							; zero destination
+				JMP				@@ret
+@@:
+				AND				R8, 511						; mask out hghbits above shift count, test for 0
+				JNE				@F							; handle edge case, shift zero bits
+				CMP				RCX, RDX
+				JE				@@ret
+				Copy512			RCX, RDX					; no shift, just copy (destination, source already in regs)
 				JMP				@@ret
 @@:
 
@@ -366,12 +362,9 @@ shl_u			PROC			PUBLIC
 @@:
 ; with the bits shifted within the words, if the desired shift is more than 64 bits, word shifts are required
 ; verify Nr of word shift is zero to seven, use it as index into jump table; jump to appropriate shift
-				SHR				R8W, 6						; divide Nr bits to shift by 64 giving Nr words to shift
-				AND				R8, 07h						; probably not necessary, but ensures a number 0 to 7 for jump table
-				SHL				R8W, 3						; multiply by 8 to give QWORD index into jump table
+				SHR				R8W, 6						; divide Nr bits to shift by 8, giving index to jump table
 				LEA				RAX, @jt					; address of jump table
-				ADD				R8, RAX						; add index
-				JMP				Q_PTR [ R8 ]				; jump to routine that shifts the appropriate Nr words
+				JMP				Q_PTR [ RAX ] [ R8 * 8 ]	; jump to routine that shifts the appropriate Nr words
 @jt:
 				QWORD			@@E, @@1, @@2, @@3, @@4, @@5, @@6, @@7
 ;			Do the shifts of multiples of 64 bits (words)
@@ -403,14 +396,14 @@ shl_u			PROC			PUBLIC
 				PUSH			RDI
 				PUSH			RCX
 ;	load sequential regs with source 8 qwords
-				MOV				R9, [RDX + 0 * 8]
-				MOV				R10, [RDX + 1 * 8]
-				MOV				R11, [RDX + 2 * 8]
-				MOV				R12, [RDX + 3 * 8]
-				MOV				R13, [RDX + 4 * 8]
-				MOV				R14, [RDX + 5 * 8]
-				MOV				R15, [RDX + 6 * 8]
-				MOV				RDI, [RDX + 7 * 8]
+				MOV				R9, Q_PTR [ RDX ] [ 0 * 8 ]
+				MOV				R10, Q_PTR [ RDX ] [ 1 * 8 ]
+				MOV				R11, Q_PTR [ RDX ] [ 2 * 8 ]
+				MOV				R12, Q_PTR [ RDX ] [ 3 * 8 ]
+				MOV				R13, Q_PTR [ RDX ] [ 4 * 8 ]
+				MOV				R14, Q_PTR [ RDX ] [ 5 * 8 ]
+				MOV				R15, Q_PTR [ RDX ] [ 6 * 8 ]
+				MOV				RDI, Q_PTR [ RDX ] [ 7 * 8 ]
 ;	determine if / how many bits to shift
 				MOVZX			RCX, R8W
 				AND				CX, 03fh
@@ -482,100 +475,100 @@ shl_u			PROC			PUBLIC
 				SHR				R8W, 6
 				AND				R8, 07h 
 				SHL				R8W, 3
-				LEA				RAX, jtbl
+				LEA				RAX, @@jtbl
 				ADD				R8, RAX
 				XOR				RAX, RAX					; clear rax for use as zeroing words shifted "in"
 				POP				RCX							; restore RCX, destination address
 				JMP				Q_PTR [ R8 ]
-jtbl:
+@@jtbl:
 				QWORD			@@0, @@1, @@2, @@3, @@4, @@5, @@6, @@7
 ; no word shift, just bits, so store words in destination in the same order as they are
 @@0:			
-				MOV				[RCX + 0 * 8], R9
-				MOV				[RCX + 1 * 8], R10
-				MOV				[RCX + 2 * 8], R11
-				MOV				[RCX + 3 * 8], R12
-				MOV				[RCX + 4 * 8], R13
-				MOV				[RCX + 5 * 8], R14
-				MOV				[RCX + 6 * 8], R15
-				MOV				[RCX + 7 * 8], RDI	
+				MOV				Q_PTR [ RCX ] [ 0 * 8 ], R9
+				MOV				Q_PTR [ RCX ] [ 1 * 8 ], R10
+				MOV				Q_PTR [ RCX ] [ 2 * 8 ], R11
+				MOV				Q_PTR [ RCX ] [ 3 * 8 ], R12
+				MOV				Q_PTR [ RCX ] [ 4 * 8 ], R13
+				MOV				Q_PTR [ RCX ] [ 5 * 8 ], R14
+				MOV				Q_PTR [ RCX ] [ 6 * 8 ], R15
+				MOV				Q_PTR [ RCX ] [ 7 * 8 ], RDI	
 				JMP				@@R
 ; one word shift, shifting one word (64+ bits) so store words in destination shifted left one, fill with zero
 @@1:			
-				MOV				[RCX + 0 * 8], R10
-				MOV				[RCX + 1 * 8], R11
-				MOV				[RCX + 2 * 8], R12
-				MOV				[RCX + 3 * 8], R13
-				MOV				[RCX + 4 * 8], R14
-				MOV				[RCX + 5 * 8], R15
-				MOV				[RCX + 6 * 8], RDI
-				MOV				[RCX + 7 * 8], RAX	
+				MOV				Q_PTR [ RCX ] [ 0 * 8 ], R10
+				MOV				Q_PTR [ RCX ] [ 1 * 8 ], R11
+				MOV				Q_PTR [ RCX ] [ 2 * 8 ], R12
+				MOV				Q_PTR [ RCX ] [ 3 * 8 ], R13
+				MOV				Q_PTR [ RCX ] [ 4 * 8 ], R14
+				MOV				Q_PTR [ RCX ] [ 5 * 8 ], R15
+				MOV				Q_PTR [ RCX ] [ 6 * 8 ], RDI
+				MOV				Q_PTR [ RCX ] [ 7 * 8 ], RAX	
 				JMP				@@R
 ; two word shift
 @@2:			
-				MOV				[RCX + 0 * 8], R11
-				MOV				[RCX + 1 * 8], R12
-				MOV				[RCX + 2 * 8], R13
-				MOV				[RCX + 3 * 8], R14
-				MOV				[RCX + 4 * 8], R15
-				MOV				[RCX + 5 * 8], RDI
-				MOV				[RCX + 6 * 8], RAX
-				MOV				[RCX + 7 * 8], RAX	
+				MOV				Q_PTR [ RCX ] [ 0 * 8], R11
+				MOV				Q_PTR [ RCX ] [ 1 * 8], R12
+				MOV				Q_PTR [ RCX ] [ 2 * 8], R13
+				MOV				Q_PTR [ RCX ] [ 3 * 8], R14
+				MOV				Q_PTR [ RCX ] [ 4 * 8], R15
+				MOV				Q_PTR [ RCX ] [ 5 * 8], RDI
+				MOV				Q_PTR [ RCX ] [ 6 * 8], RAX
+				MOV				Q_PTR [ RCX ] [ 7 * 8], RAX	
 				JMP				@@R
 ; three word shift
 @@3:			
-				MOV				[RCX + 0 * 8], R12
-				MOV				[RCX + 1 * 8], R13
-				MOV				[RCX + 2 * 8], R14
-				MOV				[RCX + 3 * 8], R15
-				MOV				[RCX + 4 * 8], RDI
-				MOV				[RCX + 5 * 8], RAX
-				MOV				[RCX + 6 * 8], RAX
-				MOV				[RCX + 7 * 8], RAX	
+				MOV				Q_PTR [ RCX ] [ 0 * 8 ], R12
+				MOV				Q_PTR [ RCX ] [ 1 * 8 ], R13
+				MOV				Q_PTR [ RCX ] [ 2 * 8 ], R14
+				MOV				Q_PTR [ RCX ] [ 3 * 8 ], R15
+				MOV				Q_PTR [ RCX ] [ 4 * 8 ], RDI
+				MOV				Q_PTR [ RCX ] [ 5 * 8 ], RAX
+				MOV				Q_PTR [ RCX ] [ 6 * 8 ], RAX
+				MOV				Q_PTR [ RCX ] [ 7 * 8 ], RAX	
 				JMP				@@R
 ; four word shift
 @@4:			
-				MOV				[RCX + 0 * 8], R13
-				MOV				[RCX + 1 * 8], R14
-				MOV				[RCX + 2 * 8], R15
-				MOV				[RCX + 3 * 8], RDI
-				MOV				[RCX + 4 * 8], RAX
-				MOV				[RCX + 5 * 8], RAX
-				MOV				[RCX + 6 * 8], RAX
-				MOV				[RCX + 7 * 8], RAX	
+				MOV				Q_PTR [ RCX ] [ 0 * 8 ], R13
+				MOV				Q_PTR [ RCX ] [ 1 * 8 ], R14
+				MOV				Q_PTR [ RCX ] [ 2 * 8 ], R15
+				MOV				Q_PTR [ RCX ] [ 3 * 8 ], RDI
+				MOV				Q_PTR [ RCX ] [ 4 * 8 ], RAX
+				MOV				Q_PTR [ RCX ] [ 5 * 8 ], RAX
+				MOV				Q_PTR [ RCX ] [ 6 * 8 ], RAX
+				MOV				Q_PTR [ RCX ] [ 7 * 8 ], RAX	
 				JMP				@@R
 ; five word shift
 @@5:			
-				MOV				[RCX + 0 * 8], R14
-				MOV				[RCX + 1 * 8], R15
-				MOV				[RCX + 2 * 8], RDI
-				MOV				[RCX + 3 * 8], RAX
-				MOV				[RCX + 4 * 8], RAX
-				MOV				[RCX + 5 * 8], RAX
-				MOV				[RCX + 6 * 8], RAX
-				MOV				[RCX + 7 * 8], RAX	
+				MOV				Q_PTR [ RCX ] [ 0 * 8 ], R14
+				MOV				Q_PTR [ RCX ] [ 1 * 8 ], R15
+				MOV				Q_PTR [ RCX ] [ 2 * 8 ], RDI
+				MOV				Q_PTR [ RCX ] [ 3 * 8 ], RAX
+				MOV				Q_PTR [ RCX ] [ 4 * 8 ], RAX
+				MOV				Q_PTR [ RCX ] [ 5 * 8 ], RAX
+				MOV				Q_PTR [ RCX ] [ 6 * 8 ], RAX
+				MOV				Q_PTR [ RCX ] [ 7 * 8 ], RAX	
 				JMP				@@R
 ; six word shift
 @@6:			
-				MOV				[RCX + 0 * 8], R15
-				MOV				[RCX + 1 * 8], RDI
-				MOV				[RCX + 2 * 8], RAX
-				MOV				[RCX + 3 * 8], RAX
-				MOV				[RCX + 4 * 8], RAX
-				MOV				[RCX + 5 * 8], RAX
-				MOV				[RCX + 6 * 8], RAX
-				MOV				[RCX + 7 * 8], RAX	
+				MOV				Q_PTR [ RCX ] [ 0 * 8], R15
+				MOV				Q_PTR [ RCX ] [ 1 * 8], RDI
+				MOV				Q_PTR [ RCX ] [ 2 * 8], RAX
+				MOV				Q_PTR [ RCX ] [ 3 * 8], RAX
+				MOV				Q_PTR [ RCX ] [ 4 * 8], RAX
+				MOV				Q_PTR [ RCX ] [ 5 * 8], RAX
+				MOV				Q_PTR [ RCX ] [ 6 * 8], RAX
+				MOV				Q_PTR [ RCX ] [ 7 * 8], RAX	
 				JMP				@@R
 ; seven word shift
 @@7:			
-				MOV				[RCX + 0 * 8], RDI
-				MOV				[RCX + 1 * 8], RAX
-				MOV				[RCX + 2 * 8], RAX
-				MOV				[RCX + 3 * 8], RAX
-				MOV				[RCX + 4 * 8], RAX
-				MOV				[RCX + 5 * 8], RAX
-				MOV				[RCX + 6 * 8], RAX
-				MOV				[RCX + 7 * 8], RAX
+				MOV				Q_PTR [ RCX ] [ 0 * 8 ], RDI
+				MOV				Q_PTR [ RCX ] [ 1 * 8 ], RAX
+				MOV				Q_PTR [ RCX ] [ 2 * 8 ], RAX
+				MOV				Q_PTR [ RCX ] [ 3 * 8 ], RAX
+				MOV				Q_PTR [ RCX ] [ 4 * 8 ], RAX
+				MOV				Q_PTR [ RCX ] [ 5 * 8 ], RAX
+				MOV				Q_PTR [ RCX ] [ 6 * 8 ], RAX
+				MOV				Q_PTR [ RCX ] [ 7 * 8 ], RAX
 ;	restore non-volitile regs to as-called condition
 @@R:		
 				POP				RDI
@@ -636,30 +629,30 @@ and_u			PROC			PUBLIC
 
 	ELSE
 
-				MOV				RAX, [ RDX + 0 * 8 ]
-				AND				RAX, [ R8 + 0 * 8 ]
-				MOV				[ RCX + 0 * 8 ], RAX
-				MOV				RAX, [ RDX + 1 * 8 ]
-				AND				RAX, [ R8 + 1 * 8 ]
-				MOV				[ RCX + 1 * 8 ], RAX
-				MOV				RAX, [ RDX + 2 * 8 ]
-				AND				RAX, [ R8 + 2 * 8 ]
-				MOV				[ RCX + 2 * 8 ], RAX
-				MOV				RAX, [ RDX + 3 * 8 ]
-				AND				RAX, [ R8 + 3 * 8 ]
-				MOV				[ RCX + 3 * 8 ], RAX
-				MOV				RAX, [ RDX + 4 * 8 ]
-				AND				RAX, [ R8 + 4 * 8 ]
-				MOV				[ RCX + 4 * 8 ], RAX
-				MOV				RAX, [ RDX + 5 * 8 ]
-				AND				RAX, [ R8 + 5 * 8 ]
-				MOV				[ RCX + 5 * 8 ], RAX			
-				MOV				RAX, [ RDX + 6 * 8 ]
-				AND				RAX, [ R8 + 6 * 8 ]
-				MOV				[ RCX + 6 * 8 ], RAX
-				MOV				RAX, [ RDX + 7 * 8 ]
-				AND				RAX, [ R8 + 7 * 8 ]
-				MOV				[ RCX + 7 * 8 ], RAX
+				MOV				RAX, Q_PTR [ RDX ] [ 0 * 8 ]
+				AND				RAX, Q_PTR [ R8 ] [ 0 * 8 ]
+				MOV				Q_PTR [ RCX ] [ 0 * 8 ], RAX
+				MOV				RAX, Q_PTR [ RDX ] [ 1 * 8 ]
+				AND				RAX, Q_PTR [ R8 ] [ 1 * 8 ]
+				MOV				Q_PTR [ RCX ] [ 1 * 8 ], RAX
+				MOV				RAX, Q_PTR [ RDX ] [ 2 * 8 ]
+				AND				RAX, Q_PTR [ R8 ] [ 2 * 8 ]
+				MOV				Q_PTR [ RCX ] [ 2 * 8 ], RAX
+				MOV				RAX, Q_PTR [ RDX ] [ 3 * 8 ]
+				AND				RAX, Q_PTR [ R8 ] [ 3 * 8 ]
+				MOV				Q_PTR [ RCX ] [ 3 * 8 ], RAX
+				MOV				RAX, Q_PTR [ RDX ] [ 4 * 8 ]
+				AND				RAX, Q_PTR [ R8 ] [ 4 * 8 ]
+				MOV				Q_PTR [ RCX ] [ 4 * 8 ], RAX
+				MOV				RAX, Q_PTR [ RDX ] [ 5 * 8 ]
+				AND				RAX, Q_PTR [ R8 ] [ 5 * 8 ]
+				MOV				Q_PTR [ RCX ] [ 5 * 8 ], RAX			
+				MOV				RAX, Q_PTR [ RDX ] [ 6 * 8 ]
+				AND				RAX, Q_PTR [ R8 ] [ 6 * 8 ]
+				MOV				Q_PTR [ RCX ] [ 6 * 8 ], RAX
+				MOV				RAX, Q_PTR [ RDX ] [ 7 * 8 ]
+				AND				RAX, Q_PTR [ R8 ] [ 7 * 8 ]
+				MOV				Q_PTR [ RCX ] [ 7 * 8 ], RAX
 
 	ENDIF
 
@@ -712,30 +705,30 @@ or_u			PROC			PUBLIC
 
 	ELSE
 
-				MOV				RAX, [ RDX + 0 * 8 ]
-				OR				RAX,  [ R8 + 0 * 8 ]
-				MOV				[ RCX + 0 * 8 ], RAX
-				MOV				RAX, [ RDX + 1 * 8 ]
-				OR				RAX, [ R8 + 1 * 8 ]
-				MOV				[ RCX + 1 * 8 ], RAX
-				MOV				RAX, [ RDX + 2 * 8 ]
-				OR				RAX, [ R8 + 2 * 8 ]
-				MOV				[ RCX + 2 * 8 ], RAX
-				MOV				RAX, [ RDX + 3 * 8 ]
-				OR				RAX, [ R8 + 3 * 8 ]
-				MOV				[ RCX + 3 * 8 ], RAX
-				MOV				RAX, [ RDX + 4 * 8 ]
-				OR				RAX, [ R8 + 4 * 8 ]
-				MOV				[ RCX + 4 * 8 ], RAX
-				MOV				RAX, [ RDX + 5 * 8 ]
-				OR				RAX, [ R8 + 5 * 8 ]
-				MOV				[ RCX + 5 * 8 ], RAX			
-				MOV				RAX, [ RDX + 6 * 8 ]
-				OR				RAX, [ R8 + 6 * 8 ]
-				MOV				[ RCX + 6 * 8 ], RAX
-				MOV				RAX, [ RDX + 7 * 8 ]
-				OR				RAX, [ R8 + 7 * 8 ]
-				MOV				[ RCX + 7 * 8 ], RAX
+				MOV				RAX, Q_PTR [ RDX ] [ 0 * 8 ]
+				OR				RAX,  Q_PTR [ R8 ] [ 0 * 8 ]
+				MOV				Q_PTR [ RCX ] [ 0 * 8 ], RAX
+				MOV				RAX,Q_PTR [ RDX ] [ 1 * 8 ]
+				OR				RAX, Q_PTR [ R8 ] [ 1 * 8 ]
+				MOV				Q_PTR [ RCX ] [ 1 * 8 ], RAX
+				MOV				RAX, Q_PTR [ RDX ] [ 2 * 8 ]
+				OR				RAX, Q_PTR [ R8 ] [ 2 * 8 ]
+				MOV				Q_PTR [ RCX ] [ 2 * 8 ], RAX
+				MOV				RAX, Q_PTR [ RDX ] [ 3 * 8 ]
+				OR				RAX, Q_PTR [ R8 ] [ 3 * 8 ]
+				MOV				Q_PTR [ RCX ] [ 3 * 8 ], RAX
+				MOV				RAX, Q_PTR [ RDX ] [ 4 * 8 ]
+				OR				RAX, Q_PTR [ R8 ] [ 4 * 8 ]
+				MOV				Q_PTR [ RCX ] [ 4 * 8 ], RAX
+				MOV				RAX, Q_PTR [ RDX ] [ 5 * 8 ]
+				OR				RAX, Q_PTR [ R8 ] [ 5 * 8 ]
+				MOV				Q_PTR [ RCX ] [ 5 * 8 ], RAX			
+				MOV				RAX, Q_PTR [ RDX ] [ 6 * 8 ]
+				OR				RAX, Q_PTR [ R8 ] [ 6 * 8 ]
+				MOV				Q_PTR [ RCX ] [ 6 * 8 ], RAX
+				MOV				RAX, Q_PTR [ RDX ] [ 7 * 8 ]
+				OR				RAX, Q_PTR [ R8 ] [ 7 * 8 ]
+				MOV				Q_PTR [ RCX ] [ 7 * 8 ], RAX
 
 	ENDIF
 
@@ -787,30 +780,30 @@ not_u			PROC			PUBLIC
 
 	ELSE
 
-				MOV				RAX, [ RDX + 0 * 8 ]
+				MOV				RAX, Q_PTR [ RDX ] [ 0 * 8 ]
 				NOT				RAX
-				MOV				[ RCX + 0 * 8 ], RAX
-				MOV				RAX, [ RDX + 1 * 8 ]
+				MOV				Q_PTR [ RCX ] [ 0 * 8 ], RAX
+				MOV				RAX, Q_PTR [ RDX ] [ 1 * 8 ]
 				NOT				RAX
-				MOV				[ RCX + 1 * 8 ], RAX
-				MOV				RAX, [ RDX + 2 * 8 ]
+				MOV				Q_PTR [ RCX ] [ 1 * 8 ], RAX
+				MOV				RAX, Q_PTR [ RDX ] [ 2 * 8 ]
 				NOT				RAX
-				MOV				[ RCX + 2 * 8 ], RAX
-				MOV				RAX, [ RDX + 3 * 8 ]
+				MOV				Q_PTR [ RCX ] [ 2 * 8 ], RAX
+				MOV				RAX, Q_PTR [ RDX ] [ 3 * 8 ]
 				NOT				RAX
-				MOV				[ RCX + 3 * 8 ], RAX
-				MOV				RAX, [ RDX + 4 * 8 ]
+				MOV				Q_PTR [ RCX ] [ 3 * 8 ], RAX
+				MOV				RAX, Q_PTR [ RDX ] [ 4 * 8 ]
 				NOT				RAX
-				MOV				[ RCX + 4 * 8 ], RAX
-				MOV				RAX, [ RDX + 5 * 8 ]
+				MOV				Q_PTR [ RCX ] [ 4 * 8 ], RAX
+				MOV				RAX, Q_PTR [ RDX ] [ 5 * 8 ]
 				NOT				RAX
-				MOV				[ RCX + 5 * 8 ], RAX			
-				MOV				RAX, [ RDX + 6 * 8 ]
+				MOV				Q_PTR [ RCX ] [ 5 * 8 ], RAX			
+				MOV				RAX, Q_PTR [ RDX ] [ 6 * 8 ]
 				NOT				RAX
-				MOV				[ RCX + 6 * 8 ], RAX
-				MOV				RAX, [ RDX + 7 * 8 ]
+				MOV				Q_PTR [ RCX ] [ 6 * 8 ], RAX
+				MOV				RAX, Q_PTR [ RDX ] [ 7 * 8 ]
 				NOT				RAX
-				MOV				[ RCX + 7 * 8 ], RAX
+				MOV				Q_PTR [ RCX ] [ 7 * 8 ], RAX
 	ENDIF
 				RET	
 not_u			ENDP
@@ -859,7 +852,7 @@ msb_u			PROC			PUBLIC
 				MOV				EAX, ret_1
 				JMP				@@Finished
 @@:
-				BSR				RAX, [ RCX + R10 * 8 ]		; Reverse Scan indexed word for significant bit
+				BSR				RAX, Q_PTR [ RCX ] [ R10 * 8 ]	; Reverse Scan indexed word for significant bit
 				JZ				@@NextWord					; None found, loop to next word
 				MOV				R11D, 7
 				SUB				R11D, R10D					; calculate seven minus the word index (which word has the msb?)
@@ -886,7 +879,7 @@ lsb_u			PROC			PUBLIC
 
 	IF __UseZ
 				Push			R9
-				VMOVDQA64		ZMM31, ZM_PTR [RCX]			; Load source 
+				VMOVDQA64		ZMM31, ZM_PTR [ RCX ]		; Load source 
 				VPTESTMQ		K1, ZMM31, ZMM31			; find non-zero words (if any)
 				KMOVB			EAX, K1
 				CMP				EAX, 0						; exit with -1 if all eight qwords are zero (no significant bit)
@@ -921,7 +914,7 @@ lsb_u			PROC			PUBLIC
 				MOV				EAX, ret_1
 				JMP				@@Finished
 @@:
-				BSF				RAX, [ RCX + R10 * 8 ]		; Scan indexed word for significant bit
+				BSF				RAX, Q_PTR [ RCX ] [ R10 * 8 ]		; Scan indexed word for significant bit
 				JZ				@@NextWord					; None found, loop to next word
 				MOV				R11D, 7						;  
 				SUB				R11D, R10D					; calculate seven minus the word index (which word has the msb?)

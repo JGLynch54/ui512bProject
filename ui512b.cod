@@ -1,4 +1,4 @@
-Microsoft (R) Macro Assembler (x64) Version 14.43.34808.0   03/05/25 12:08:56
+Microsoft (R) Macro Assembler (x64) Version 14.44.35209.0   06/30/25 22:20:11
 ui512b.asm						     Page 1 - 1
 
 
@@ -62,10 +62,10 @@ ui512b.asm						     Page 1 - 1
 				;--------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 								INCLUDE			ui512aMacros.inc
-			      C .nolist
-			      C .list
+			      C .NOLIST
+			      C .LIST
 			      C IFNDEF			ui512aMacros_INC
- = 1			      C ui512aMacros_INC EQU		<1>
+ = 1			      C ui512aMacros_INC EQU			<1>
 			      C 
 			      C ;           header file equivalent extern declarations
 			      C ;			EXTERN "C" signatures (from ui512a.asm)
@@ -151,6 +151,9 @@ ui512b.asm						     Page 1 - 1
  = 00000020		      C MaskBit5		EQU				B_PTR [ 00100000b ]
  = 00000040		      C MaskBit6		EQU				B_PTR [ 01000000b ]
  = 00000080		      C MaskBit7		EQU				B_PTR [ 10000000b ]
+			      C 
+			      C ;			Another way to get masks
+			      C kMask			RECORD			b8:1, b7:1, b6:1, b5:1, b4:1, b3:1, b2:1, b1:1, b0:1
 			      C ;==========================================================================================
 			      C ;           Notes on x64 calling conventions        aka "fast call"
 			      C ; ref: https://learn.microsoft.com/en-us/cpp/build/x64-calling-convention?view=msvc-170
@@ -182,18 +185,20 @@ ui512b.asm						     Page 1 - 1
 			      C ;			Test passed variable addresses for 64 byte alignment
 			      C ;			Note: Better performance if this is off, but for debugging, maybe have it on
 			      C ;
-			      C 
 			      C CheckAlign		MACRO			Raddr
 			      C 				LOCAL			ok
 			      C 	IF	__CheckAlign
 			      C 				TEST			Raddr, 63							; Is specified param aligned 64?
 			      C 				JZ				ok									; Yes, passes test, continue
-			      C 				INT				0									; No, fails, break (can substitute other exception handling)
+			      C 				INT				0									; No? fails, break (can substitute other exception handling)
 			      C ok:
 			      C 	ENDIF
 			      C 				ENDM
 			      C 
 			      C MemConstants	MACRO
+			      C ;
+			      C zeroQ			DQ				0
+			      C mskHex100		DD				0100h
 			      C ;		Return codes commonly used.			
 			      C ret0			DD				0								
 			      C ret1			DD				1
@@ -208,83 +213,91 @@ ui512b.asm						     Page 1 - 1
 			      C mskB5			DB				32
 			      C mskB6			DB				64
 			      C mskB7			DB				128
+			      C ;
+			      C 				ALIGN			8									; realign
 			      C 				ENDM
 			      C 
 			      C ;
 			      C ;			Zero a 512 bit destination, conditional assembly based on configuration parameters
 			      C ;
-			      C 
-			      C Zero512			MACRO			dest
+			      C Zero512			MACRO			dest:REQ
+			      C 	IF		__UseZ
 			      C 				CheckAlign		dest
-			      C 	IF	__UseZ
 			      C 				VPXORQ			ZMM31, ZMM31, ZMM31
 			      C 				VMOVDQA64		ZM_PTR [ dest ], ZMM31
 			      C 	ELSEIF	__UseY
+			      C 				CheckAlign		dest
 			      C 				VPXORQ			YMM4, YMM4, YMM4
-			      C 				VMOVDQA64		YM_PTR [ dest + 0 * 8 ], YMM4
-			      C 				VMOVDQA64		YM_PTR [ dest + 4 * 8 ], YMM4
+			      C 				FOR				idx, < 0, 4 >
+			      C 				VMOVDQA64		YM_PTR [ dest ] [ idx * 8 ], YMM4
+			      C 				ENDM
 			      C 	ELSEIF	__UseX
+			      C 				CheckAlign		dest
 			      C 				PXOR			XMM4, XMM4
-			      C 				MOVDQA			XM_PTR [ dest + 0 * 8 ], XMM4
-			      C 				MOVDQA			XM_PTR [ dest + 2 * 8 ], XMM4
-			      C 				MOVDQA			XM_PTR [ dest + 4 * 8 ], XMM4
-			      C 				MOVDQA			XM_PTR [ dest + 6 * 8 ], XMM4			
+			      C 				FOR				idx, < 0, 2, 4, 6 >
+			      C 				MOVDQA			XM_PTR [ dest ] [ idx * 8 ], XMM4
+			      C 				ENDM		
 			      C 	ELSE
 			      C 				XOR				RAX, RAX
-			      C 				MOV				[ dest + 0 * 8 ], RAX
-			      C 				MOV				[ dest + 1 * 8 ], RAX
-			      C 				MOV				[ dest + 2 * 8 ], RAX
-			      C 				MOV				[ dest + 3 * 8 ], RAX
-			      C 				MOV				[ dest + 4 * 8 ], RAX
-			      C 				MOV				[ dest + 5 * 8 ], RAX
-			      C 				MOV				[ dest + 6 * 8 ], RAX
-			      C 				MOV				[ dest + 7 * 8 ], RAX
+			      C 				FOR				idx,  < 0, 1, 2, 3, 4, 5, 6, 7 >
+			      C 				MOV				Q_PTR [ dest ] [ idx * 8 ], RAX
+			      C 				ENDM
 			      C 	ENDIF
 			      C 				ENDM
 			      C 
+			      C ;
+			      C ;			Zero a 512 bit destination, always use Q_PTR, avoids clock penalty from using SIMD
+			      C ;
+			      C Zero512Q		MACRO			dest:REQ
+			      C 				XOR				RAX, RAX
+			      C 				FOR				idx,  < 0, 1, 2, 3, 4, 5, 6, 7 >
+			      C 				MOV				Q_PTR [ dest ] [ idx * 8 ], RAX
+			      C 				ENDM
 			      C 
+			      C 				ENDM
 			      C ;
 			      C ;			Copy a 512 bit source to destination, conditional assembly based on configuration parameters
 			      C ;
-			      C 
-			      C Copy512			MACRO			dest, src
+			      C Copy512			MACRO			dest:REQ, src:REQ
+			      C 	IF		__UseZ 
 			      C 				CheckAlign		dest
 			      C 				CheckAlign		src
-			      C 	IF	__UseZ
 			      C 				VMOVDQA64		ZMM31, ZM_PTR [ src ]
 			      C 				VMOVDQA64		ZM_PTR [ dest ], ZMM31
 			      C 	ELSEIF	__UseY
+			      C 				CheckAlign		dest
+			      C 				CheckAlign		src
 			      C 				VMOVDQA64		YMM4, YM_PTR [ src + 0 * 8 ]
-			      C 				VMOVDQA64		YM_PTR [ dest + 0 * 8 ], YMM4	; alternate ymm regs in case pipeline can execute next without waiting for this.
-			      C 				VMOVDQA64		YMM5, YM_PTR [ src + 4 * 8 ]
-			      C 				VMOVDQA64		YM_PTR [ dest + 4 * 8 ], YMM5
+			      C 				VMOVDQA64		YM_PTR [ dest ] [ 0 * 8 ], YMM4	; alternate ymm regs in case pipeline can execute next without waiting for this.
+			      C 				VMOVDQA64		YMM5, YM_PTR [ src ] [ 4 * 8 ]
+			      C 				VMOVDQA64		YM_PTR [ dest ] [ 4 * 8 ], YMM5
 			      C 	ELSEIF	__UseX
-			      C 				MOVDQA			XMM4, XM_PTR [ src + 0 * 8 ]
-			      C 				MOVDQA			XM_PTR [ dest + 0 * 8 ], XMM4
-			      C 				MOVDQA			XMM3, XM_PTR [ src + 2 * 8 ]
-			      C 				MOVDQA			XM_PTR [ dest + 2 * 8 ], XMM3
-			      C 				MOVDQA			XMM4, XM_PTR [ src + 4 * 8 ]
-			      C 				MOVDQA			XM_PTR [ dest + 4 * 8 ], XMM4
-			      C 				MOVDQA			XMM3, XM_PTR [ src + 6 * 8 ]
-			      C 				MOVDQA			XM_PTR [ dest + 6 * 8 ], XMM3
+			      C 				CheckAlign		dest
+			      C 				CheckAlign		src
+			      C 				MOVDQA			XMM4, XM_PTR [ src ] [ 0 * 8 ]
+			      C 				MOVDQA			XM_PTR [ dest ] [ 0 * 8 ], XMM4
+			      C 				MOVDQA			XMM3, XM_PTR [ src ] [ 2 * 8 ]
+			      C 				MOVDQA			XM_PTR [ dest ] [ 2 * 8 ], XMM3
+			      C 				MOVDQA			XMM4, XM_PTR [ src ] [ 4 * 8 ]
+			      C 				MOVDQA			XM_PTR [ dest ] [ 4 * 8 ], XMM4
+			      C 				MOVDQA			XMM3, XM_PTR [ src ] [ 6 * 8 ]
+			      C 				MOVDQA			XM_PTR [ dest ] [ 6 * 8 ], XMM3
 			      C 	ELSE
-			      C 				MOV				RAX, [ src + 0 * 8 ]
-			      C 				MOV				[ dest + 0 * 8 ], RAX
-			      C 				MOV				RAX, [ src + 1 * 8 ]
-			      C 				MOV				[ dest + 1 * 8 ], RAX
-			      C 				MOV				RAX, [ src + 2 * 8 ]
-			      C 				MOV				[ dest + 2 * 8 ], RAX
-			      C 				MOV				RAX, [ src + 3 * 8 ]
-			      C 				MOV				[ dest + 3 * 8 ], RAX
-			      C 				MOV				RAX, [ src + 4 * 8 ]
-			      C 				MOV				[ dest + 4 * 8 ], RAX
-			      C 				MOV				RAX, [ src + 5 * 8 ]
-			      C 				MOV				[ dest + 5 * 8 ], RAX
-			      C 				MOV				RAX, [ src + 6 * 8 ]
-			      C 				MOV				[ dest + 6 * 8 ], RAX
-			      C 				MOV				RAX, [ src + 7 * 8 ]
-			      C 				MOV				[ dest + 7 * 8 ], RAX
+			      C 				FOR				idx, < 0, 1, 2, 3, 4, 5, 6, 7 >
+			      C 				MOV				RAX, Q_PTR [ src ] [ idx * 8 ]
+			      C 				MOV				Q_PTR [ dest ] [ idx * 8 ], RAX
+			      C 				ENDM
 			      C 	ENDIF
+			      C 				ENDM
+			      C ;
+			      C ;			Copy a 512 bit source to destination, always use Q_PTR, avoids clock penalty from using SIMD
+			      C ;
+			      C Copy512Q		MACRO			dest:REQ, src:REQ
+			      C 				FOR				idx, < 0, 1, 2, 3, 4, 5, 6, 7 >
+			      C 				MOV				RAX, Q_PTR [ src ] [ idx * 8 ]
+			      C 				MOV				Q_PTR [ dest ] [ idx * 8 ], RAX
+			      C 				ENDM
+			      C 
 			      C 				ENDM
 			      C 
 			      C ;
@@ -293,7 +306,6 @@ ui512b.asm						     Page 1 - 1
 			      C ;			Example usage: GetZatIdx R11, ZMM1, MaskBit2 or SetZatIdx ZMM1, R12, [ R9 ]  (where R9 is a bit mask, not an integer index)
 			      C ;			Note: These are req to reg ops; no memory fetches (other than instructions from pipeline)
 			      C ;
-			      C 
 			      C GetZatMask		MACRO			dest, src, mask
 			      C 				LEA				RAX,  mask
 			      C 				KMOVB			k1, RAX
@@ -307,7 +319,6 @@ ui512b.asm						     Page 1 - 1
 			      C ;			Example usage: SetZatIdx ZMM1, R8, MaskBit2
 			      C ;			Note: These are req to reg ops; no memory fetches (other than instructions from pipeline)
 			      C ;
-			      C 
 			      C SetZatMask		MACRO			dest, src, mask
 			      C 				LEA				RAX, mask
 			      C 				KMOVB			k1, RAX
@@ -373,18 +384,21 @@ ui512b.asm						     Page 1 - 1
 								OPTION          EPILOGUE:none
 
 								MemConstants
- 00000000 00000000	     1	ret0			DD				0								
- 00000004 00000001	     1	ret1			DD				1
- 00000008 FFFFFFFF	     1	ret_1			DD				-1
- 0000000C FF		     1	mskAll8			DB				255
- 0000000D 01		     1	mskB0			DB				1
- 0000000E 02		     1	mskB1			DB				2
- 0000000F 04		     1	mskB2			DB				4
- 00000010 08		     1	mskB3			DB				8
- 00000011 10		     1	mskB4			DB				16
- 00000012 20		     1	mskB5			DB				32
- 00000013 40		     1	mskB6			DB				64
- 00000014 80		     1	mskB7			DB				128
+ 00000000		     1	zeroQ			DQ				0
+	   0000000000000000
+ 00000008 00000100	     1	mskHex100		DD				0100h
+ 0000000C 00000000	     1	ret0			DD				0								
+ 00000010 00000001	     1	ret1			DD				1
+ 00000014 FFFFFFFF	     1	ret_1			DD				-1
+ 00000018 FF		     1	mskAll8			DB				255
+ 00000019 01		     1	mskB0			DB				1
+ 0000001A 02		     1	mskB1			DB				2
+ 0000001B 04		     1	mskB2			DB				4
+ 0000001C 08		     1	mskB3			DB				8
+ 0000001D 10		     1	mskB4			DB				16
+ 0000001E 20		     1	mskB5			DB				32
+ 0000001F 40		     1	mskB6			DB				64
+ 00000020 80		     1	mskB7			DB				128
 				;--------------------------------------------------------------------------------------------------------------------------------------------------------------
 				;			shr_u		-	shift supplied source 512bit (8 QWORDS) right, put in destination
 				;			Prototype:		void shr_u( u64* destination, u64* source, u32 bits_to_shift)
@@ -394,99 +408,95 @@ ui512b.asm						     Page 1 - 1
 				;			returns		-	nothing (0)
 				;			Note: unwound loop(s). More instructions, but fewer executed (no loop save, setup, compare loop), faster, fewer regs used
 
- 00000015			shr_u			PROC			PUBLIC
+ 00000028			shr_u			PROC			PUBLIC
 
 								CheckAlign		RCX
 								CheckAlign		RDX
 
- 00000015  66| 41/ 83 F8					CMP				R8W, 0							; handle edge case, shift zero bits
-	   00
- 0000001A  75 1A						JNE				@F
- 0000001C  48/ 3B CA						CMP				RCX, RDX
- 0000001F  0F 84 000000F1					JE				@@ret							; destination is the same as the source: no copy needed
-								Copy512			RCX, RDX						; no shift, just copy (destination, source already in regs)
- 00000025  62 61 FD 48/ 6F   1					VMOVDQA64		ZMM31, ZM_PTR [ RDX ]
-	   3A
- 0000002B  62 61 FD 48/ 7F   1					VMOVDQA64		ZM_PTR [ RCX ], ZMM31
-	   39
- 00000031  E9 000000E0						JMP				@@ret
- 00000036			@@:
- 00000036  66| 41/ 81 F8					CMP				R8W, 512						; handle edge case, shift 512 or more bits
+ 00000028  66| 41/ 81 F8					CMP				R8W, 512						; handle edge case, shift 512 or more bits
 	   0200
- 0000003C  7C 11						JL				@F
+ 0000002E  7C 0D						JL				@F
 								Zero512			RCX								; zero destination
- 0000003E  62 01 85 40/ EF   1					VPXORQ			ZMM31, ZMM31, ZMM31
+ 00000030  62 01 85 40/ EF   1					VPXORQ			ZMM31, ZMM31, ZMM31
 	   FF
- 00000044  62 61 FD 48/ 7F   1					VMOVDQA64		ZM_PTR [ RCX ], ZMM31
+ 00000036  62 61 FD 48/ 7F   1					VMOVDQA64		ZM_PTR [ RCX ], ZMM31
 	   39
- 0000004A  E9 000000C7						JMP				@@ret
- 0000004F			@@:
+ 0000003C  C3							RET
+ 0000003D			@@:
+ 0000003D  49/ 81 E0						AND				R8, 511							; ensure no high bits above shift count
+	   000001FF
+ 00000044  75 16						JNZ				@F								; handle edge case, zero bits to shift
+ 00000046  48/ 3B CA						CMP				RCX, RDX
+ 00000049  0F 84 000000C9					JE				@@ret							; destination is the same as the source: no copy needed
+								Copy512			RCX, RDX						; no shift, just copy (destination, source already in regs)
+ 0000004F  62 61 FD 48/ 6F   1					VMOVDQA64		ZMM31, ZM_PTR [ RDX ]
+	   3A
+ 00000055  62 61 FD 48/ 7F   1					VMOVDQA64		ZM_PTR [ RCX ], ZMM31
+	   39
+ 0000005B  C3							RET
+ 0000005C			@@:
 
 					IF	__UseZ
- 0000004F  62 61 FD 48/ 6F					VMOVDQA64		ZMM31, ZM_PTR [ RDX ]			; load the 8 qwords into zmm reg (note: word order)
+ 0000005C  62 61 FD 48/ 6F					VMOVDQA64		ZMM31, ZM_PTR [ RDX ]			; load the 8 qwords into zmm reg (note: word order)
 	   3A
- 00000055  49/ 0F B7 C0						MOVZX			RAX, R8W
- 00000059  66| 83 E0 3F						AND				AX, 03fh						; limit shift count to 63 (shifting bits only here, not words)
- 0000005D  74 19						JZ				@F								; must be multiple of 64 bits to shift, no bits, just words to shift
- 0000005F  62 62 FD 48/ 7C					VPBROADCASTQ	ZMM29, RAX						; Nr bits to shift right
+ 00000062  49/ 0F B7 C0						MOVZX			RAX, R8W
+ 00000066  66| 83 E0 3F						AND				AX, 03fh						; limit shift count to 63 (shifting bits only here, not words)
+ 0000006A  74 19						JZ				@F								; if true, must be multiple of 64 bits to shift, no bits, just words to shift
+ 0000006C  62 62 FD 48/ 7C					VPBROADCASTQ	ZMM29, RAX						; Nr bits to shift right
 	   E8
- 00000065  62 01 9D 40/ EF					VPXORQ			ZMM28, ZMM28, ZMM28				; 
+ 00000072  62 01 9D 40/ EF					VPXORQ			ZMM28, ZMM28, ZMM28				; 
 	   E4
- 0000006B  62 03 85 40/ 03					VALIGNQ			ZMM30, ZMM31, ZMM28, 7			; shift copy of words left one word (to get low order bits aligned for shift)
+ 00000078  62 03 85 40/ 03					VALIGNQ			ZMM30, ZMM31, ZMM28, 7			; shift copy of words left one word (to get low order bits aligned for shift)
 	   F4 07
- 00000072  62 02 8D 40/ 73					VPSHRDVQ		ZMM31, ZMM30, ZMM29				; shift, concatenating low bits of next word with each word to shift in
+ 0000007F  62 02 8D 40/ 73					VPSHRDVQ		ZMM31, ZMM30, ZMM29				; shift, concatenating low bits of next word with each word to shift in
 	   FD
- 00000078			@@:
+ 00000085			@@:
 				; with the bits shifted within the words, if the desired shift is more than 64 bits, word shifts are required
 				; verify Nr of word shift is zero to seven, use it as index into jump table; jump to appropriate shift
- 00000078  66| 41/ C1 E8					SHR				R8W, 6							; divide Nr bits to shift by 64 giving Nr words to shift
+
+ 00000085  66| 41/ C1 E8					SHR				R8W, 6							; divide Nr bits to shift by 64 giving Nr words to shift (can only be 0-7 based on above validation)
 	   06
- 0000007D  49/ 83 E0 07						AND				R8, 07h							; probably not necessary, but ensures a number 0 to 7 for jump table
- 00000081  66| 41/ C1 E0					SHL				R8W, 3							; multiply by 8 to give QWORD index into jump table
-	   03
- 00000086  48/ 8D 05						LEA				RAX, @jt						; address of jump table
-	   00000093 R
- 0000008D  4C/ 03 C0						ADD				R8, RAX							; add index
- 00000090  41/ FF 20						JMP				Q_PTR [ R8 ]					; jump to routine that shifts the appropriate Nr words
- 00000093			@jt:
- 00000093  0000000000000110 R					QWORD			@@E, @@1, @@2, @@3, @@4, @@5, @@6, @@7
-	   00000000000000D3 R
-	   00000000000000DC R
-	   00000000000000E5 R
-	   00000000000000EE R
-	   00000000000000F7 R
-	   0000000000000100 R
-	   0000000000000109 R
- 000000D3  62 03 85 40/ 03	@@1:			VALIGNQ			ZMM31, ZMM31, ZMM28, 7			; shifts words in ZMM31 right 7, fills with zero, resulting seven plus filled zero to ZMM31
+ 0000008A  48/ 8D 05						LEA				RAX, @jt						; address of jump table
+	   00000095 R
+ 00000091  42/ FF 24 C0						JMP				Q_PTR [ RAX ] [ R8 * 8 ]		; jump to routine that shifts the appropriate Nr words
+ 00000095			@jt:
+ 00000095  0000000000000112 R					QWORD			@@E, @@1, @@2, @@3, @@4, @@5, @@6, @@7
+	   00000000000000D5 R
+	   00000000000000DE R
+	   00000000000000E7 R
+	   00000000000000F0 R
+	   00000000000000F9 R
+	   0000000000000102 R
+	   000000000000010B R
+ 000000D5  62 03 85 40/ 03	@@1:			VALIGNQ			ZMM31, ZMM31, ZMM28, 7			; shifts words in ZMM31 right 7, fills with zero, resulting seven plus filled zero to ZMM31
 	   FC 07
- 000000DA  EB 34						JMP				@@E
- 000000DC  62 03 85 40/ 03	@@2:			VALIGNQ			ZMM31, ZMM31, ZMM28, 6
+ 000000DC  EB 34						JMP				@@E
+ 000000DE  62 03 85 40/ 03	@@2:			VALIGNQ			ZMM31, ZMM31, ZMM28, 6
 	   FC 06
- 000000E3  EB 2B						JMP				@@E
- 000000E5  62 03 85 40/ 03	@@3:			VALIGNQ			ZMM31, ZMM31, ZMM28, 5
+ 000000E5  EB 2B						JMP				@@E
+ 000000E7  62 03 85 40/ 03	@@3:			VALIGNQ			ZMM31, ZMM31, ZMM28, 5
 	   FC 05
- 000000EC  EB 22						JMP				@@E
- 000000EE  62 03 85 40/ 03	@@4:			VALIGNQ			ZMM31, ZMM31, ZMM28, 4
+ 000000EE  EB 22						JMP				@@E
+ 000000F0  62 03 85 40/ 03	@@4:			VALIGNQ			ZMM31, ZMM31, ZMM28, 4
 	   FC 04
- 000000F5  EB 19						JMP				@@E
- 000000F7  62 03 85 40/ 03	@@5:			VALIGNQ			ZMM31, ZMM31, ZMM28, 3
+ 000000F7  EB 19						JMP				@@E
+ 000000F9  62 03 85 40/ 03	@@5:			VALIGNQ			ZMM31, ZMM31, ZMM28, 3
 	   FC 03
- 000000FE  EB 10						JMP				@@E
- 00000100  62 03 85 40/ 03	@@6:			VALIGNQ			ZMM31, ZMM31, ZMM28, 2
+ 00000100  EB 10						JMP				@@E
+ 00000102  62 03 85 40/ 03	@@6:			VALIGNQ			ZMM31, ZMM31, ZMM28, 2
 	   FC 02
- 00000107  EB 07						JMP				@@E
- 00000109  62 03 85 40/ 03	@@7:			VALIGNQ			ZMM31, ZMM31, ZMM28, 1
+ 00000109  EB 07						JMP				@@E
+ 0000010B  62 03 85 40/ 03	@@7:			VALIGNQ			ZMM31, ZMM31, ZMM28, 1
 	   FC 01
 
- 00000110  62 61 FD 48/ 7F	@@E:			VMOVDQA64		ZM_PTR [ RCX ], ZMM31			; store result at callers destination
+ 00000112  62 61 FD 48/ 7F	@@E:			VMOVDQA64		ZM_PTR [ RCX ], ZMM31			; store result at callers destination
 	   39
- 00000116			@@ret:
- 00000116  C3							RET	
+ 00000118  C3			@@ret:			RET	
 
 					ELSE
 					ENDIF
 					
- 00000117			shr_u			ENDP
+ 00000119			shr_u			ENDP
 
 
 				;--------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -497,102 +507,98 @@ ui512b.asm						     Page 1 - 1
 				;			bits		-	Number of bits to shift. Will fill with zeros, truncate those shifted out (in R8W)
 				;			returns		-	nothing (0)
 
- 00000117			shl_u			PROC			PUBLIC
+ 00000119			shl_u			PROC			PUBLIC
 
 								CheckAlign		RCX
 								CheckAlign		RDX
 
- 00000117  66| 41/ 83 F8					CMP				R8W, 0						; handle edge case, shift zero bits
-	   00
- 0000011C  75 1A						JNE				@F
- 0000011E  48/ 3B CA						CMP				RCX, RDX
- 00000121  0F 84 000000F1					JE				@@ret
-								Copy512			RCX, RDX					; no shift, just copy (destination, source already in regs)
- 00000127  62 61 FD 48/ 6F   1					VMOVDQA64		ZMM31, ZM_PTR [ RDX ]
-	   3A
- 0000012D  62 61 FD 48/ 7F   1					VMOVDQA64		ZM_PTR [ RCX ], ZMM31
-	   39
- 00000133  E9 000000E0						JMP				@@ret
- 00000138			@@:
- 00000138  66| 41/ 81 F8					CMP				R8W, 512					; handle edge case, shift 512 or more bits
+ 00000119  66| 41/ 81 F8					CMP				R8W, 512					; handle edge case, shift 512 or more bits
 	   0200
- 0000013E  7C 11						JL				@F
+ 0000011F  7C 11						JL				@F
 								Zero512			RCX							; zero destination
- 00000140  62 01 85 40/ EF   1					VPXORQ			ZMM31, ZMM31, ZMM31
+ 00000121  62 01 85 40/ EF   1					VPXORQ			ZMM31, ZMM31, ZMM31
 	   FF
- 00000146  62 61 FD 48/ 7F   1					VMOVDQA64		ZM_PTR [ RCX ], ZMM31
+ 00000127  62 61 FD 48/ 7F   1					VMOVDQA64		ZM_PTR [ RCX ], ZMM31
 	   39
- 0000014C  E9 000000C7						JMP				@@ret
- 00000151			@@:
+ 0000012D  E9 000000DF						JMP				@@ret
+ 00000132			@@:
+ 00000132  49/ 81 E0						AND				R8, 511						; mask out hghbits above shift count, test for 0
+	   000001FF
+ 00000139  75 1A						JNE				@F							; handle edge case, shift zero bits
+ 0000013B  48/ 3B CA						CMP				RCX, RDX
+ 0000013E  0F 84 000000CD					JE				@@ret
+								Copy512			RCX, RDX					; no shift, just copy (destination, source already in regs)
+ 00000144  62 61 FD 48/ 6F   1					VMOVDQA64		ZMM31, ZM_PTR [ RDX ]
+	   3A
+ 0000014A  62 61 FD 48/ 7F   1					VMOVDQA64		ZM_PTR [ RCX ], ZMM31
+	   39
+ 00000150  E9 000000BC						JMP				@@ret
+ 00000155			@@:
 
 					IF __UseZ
 					
- 00000151  62 61 FD 48/ 6F					VMOVDQA64		ZMM31, ZM_PTR [ RDX ]		; load the 8 qwords into zmm reg (note: word order)
+ 00000155  62 61 FD 48/ 6F					VMOVDQA64		ZMM31, ZM_PTR [ RDX ]		; load the 8 qwords into zmm reg (note: word order)
 	   3A
- 00000157  49/ 0F B7 C0						MOVZX			RAX, R8W
- 0000015B  66| 83 E0 3F						AND				AX, 03fh
- 0000015F  74 19						JZ				@F							; must be multiple of 64 bits to shift, no bits, just words to shift
+ 0000015B  49/ 0F B7 C0						MOVZX			RAX, R8W
+ 0000015F  66| 83 E0 3F						AND				AX, 03fh
+ 00000163  74 19						JZ				@F							; must be multiple of 64 bits to shift, no bits, just words to shift
 				;			Do the shift of bits within the 64 bit words
- 00000161  62 62 FD 48/ 7C					VPBROADCASTQ	ZMM29, RAX					; Nr bits to shift left
+ 00000165  62 62 FD 48/ 7C					VPBROADCASTQ	ZMM29, RAX					; Nr bits to shift left
 	   E8
- 00000167  62 01 9D 40/ EF					VPXORQ			ZMM28, ZMM28, ZMM28			; 
+ 0000016B  62 01 9D 40/ EF					VPXORQ			ZMM28, ZMM28, ZMM28			; 
 	   E4
- 0000016D  62 03 9D 40/ 03					VALIGNQ			ZMM30, ZMM28, ZMM31, 1		; shift copy of words right one word (to get low order bits aligned for shift)
+ 00000171  62 03 9D 40/ 03					VALIGNQ			ZMM30, ZMM28, ZMM31, 1		; shift copy of words right one word (to get low order bits aligned for shift)
 	   F7 01
- 00000174  62 02 8D 40/ 71					VPSHLDVQ		ZMM31, ZMM30, ZMM29			; shift, concatentating low bits of next word with each word to shift in
+ 00000178  62 02 8D 40/ 71					VPSHLDVQ		ZMM31, ZMM30, ZMM29			; shift, concatentating low bits of next word with each word to shift in
 	   FD
- 0000017A			@@:
+ 0000017E			@@:
 				; with the bits shifted within the words, if the desired shift is more than 64 bits, word shifts are required
 				; verify Nr of word shift is zero to seven, use it as index into jump table; jump to appropriate shift
- 0000017A  66| 41/ C1 E8					SHR				R8W, 6						; divide Nr bits to shift by 64 giving Nr words to shift
+ 0000017E  66| 41/ C1 E8					SHR				R8W, 6						; divide Nr bits to shift by 8, giving index to jump table
 	   06
- 0000017F  49/ 83 E0 07						AND				R8, 07h						; probably not necessary, but ensures a number 0 to 7 for jump table
- 00000183  66| 41/ C1 E0					SHL				R8W, 3						; multiply by 8 to give QWORD index into jump table
-	   03
- 00000188  48/ 8D 05						LEA				RAX, @jt					; address of jump table
-	   00000195 R
- 0000018F  4C/ 03 C0						ADD				R8, RAX						; add index
- 00000192  41/ FF 20						JMP				Q_PTR [ R8 ]				; jump to routine that shifts the appropriate Nr words
- 00000195			@jt:
- 00000195  0000000000000212 R					QWORD			@@E, @@1, @@2, @@3, @@4, @@5, @@6, @@7
-	   00000000000001D5 R
-	   00000000000001DE R
-	   00000000000001E7 R
-	   00000000000001F0 R
-	   00000000000001F9 R
-	   0000000000000202 R
-	   000000000000020B R
+ 00000183  48/ 8D 05						LEA				RAX, @jt					; address of jump table
+	   0000018E R
+ 0000018A  42/ FF 24 C0						JMP				Q_PTR [ RAX ] [ R8 * 8 ]	; jump to routine that shifts the appropriate Nr words
+ 0000018E			@jt:
+ 0000018E  000000000000020B R					QWORD			@@E, @@1, @@2, @@3, @@4, @@5, @@6, @@7
+	   00000000000001CE R
+	   00000000000001D7 R
+	   00000000000001E0 R
+	   00000000000001E9 R
+	   00000000000001F2 R
+	   00000000000001FB R
+	   0000000000000204 R
 				;			Do the shifts of multiples of 64 bits (words)
- 000001D5  62 03 9D 40/ 03	@@1:			VALIGNQ			ZMM31, ZMM28, ZMM31, 1
+ 000001CE  62 03 9D 40/ 03	@@1:			VALIGNQ			ZMM31, ZMM28, ZMM31, 1
 	   FF 01
- 000001DC  EB 34						JMP				@@E
- 000001DE  62 03 9D 40/ 03	@@2:			VALIGNQ			ZMM31, ZMM28, ZMM31, 2
+ 000001D5  EB 34						JMP				@@E
+ 000001D7  62 03 9D 40/ 03	@@2:			VALIGNQ			ZMM31, ZMM28, ZMM31, 2
 	   FF 02
- 000001E5  EB 2B						JMP				@@E
- 000001E7  62 03 9D 40/ 03	@@3:			VALIGNQ			ZMM31, ZMM28, ZMM31, 3
+ 000001DE  EB 2B						JMP				@@E
+ 000001E0  62 03 9D 40/ 03	@@3:			VALIGNQ			ZMM31, ZMM28, ZMM31, 3
 	   FF 03
- 000001EE  EB 22						JMP				@@E
- 000001F0  62 03 9D 40/ 03	@@4:			VALIGNQ			ZMM31, ZMM28, ZMM31, 4
+ 000001E7  EB 22						JMP				@@E
+ 000001E9  62 03 9D 40/ 03	@@4:			VALIGNQ			ZMM31, ZMM28, ZMM31, 4
 	   FF 04
- 000001F7  EB 19						JMP				@@E
- 000001F9  62 03 9D 40/ 03	@@5:			VALIGNQ			ZMM31, ZMM28, ZMM31, 5
+ 000001F0  EB 19						JMP				@@E
+ 000001F2  62 03 9D 40/ 03	@@5:			VALIGNQ			ZMM31, ZMM28, ZMM31, 5
 	   FF 05
- 00000200  EB 10						JMP				@@E
- 00000202  62 03 9D 40/ 03	@@6:			VALIGNQ			ZMM31, ZMM28, ZMM31, 6
+ 000001F9  EB 10						JMP				@@E
+ 000001FB  62 03 9D 40/ 03	@@6:			VALIGNQ			ZMM31, ZMM28, ZMM31, 6
 	   FF 06
- 00000209  EB 07						JMP				@@E
- 0000020B  62 03 9D 40/ 03	@@7:			VALIGNQ			ZMM31, ZMM28, ZMM31, 7
+ 00000202  EB 07						JMP				@@E
+ 00000204  62 03 9D 40/ 03	@@7:			VALIGNQ			ZMM31, ZMM28, ZMM31, 7
 	   FF 07
 
- 00000212  62 61 FD 48/ 7F	@@E:			VMOVDQA64		ZM_PTR [ RCX ], ZMM31
+ 0000020B  62 61 FD 48/ 7F	@@E:			VMOVDQA64		ZM_PTR [ RCX ], ZMM31
 	   39
- 00000218			@@ret:
- 00000218  C3							RET
+ 00000211			@@ret:
+ 00000211  C3							RET
 								
 					ELSE
 					ENDIF
 
- 00000219			shl_u			ENDP
+ 00000212			shl_u			ENDP
 
 
 				;--------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -602,7 +608,7 @@ ui512b.asm						     Page 1 - 1
 				;			lh_op		-	Address of 64 byte alligned array of 8 64-bit words (QWORDS) 512 bits (in RDX)
 				;			rh_op		-	Address of 64 byte alligned array of 8 64-bit words (QWORDS) 512 bits (in R8)
 				;			returns		-	nothing (0)
- 00000219			and_u			PROC			PUBLIC 
+ 00000212			and_u			PROC			PUBLIC 
 
 								CheckAlign		RCX
 								CheckAlign		RDX
@@ -610,18 +616,18 @@ ui512b.asm						     Page 1 - 1
 
 					IF __UseZ
 					
- 00000219  62 61 FD 48/ 6F					VMOVDQA64		ZMM31, ZM_PTR [ RDX ]		; load lh_op	
+ 00000212  62 61 FD 48/ 6F					VMOVDQA64		ZMM31, ZM_PTR [ RDX ]		; load lh_op	
 	   3A
- 0000021F  62 41 85 40/ DB					VPANDQ			ZMM31, ZMM31, ZM_PTR [ R8 ]	; 'AND' with rh_op
+ 00000218  62 41 85 40/ DB					VPANDQ			ZMM31, ZMM31, ZM_PTR [ R8 ]	; 'AND' with rh_op
 	   38
- 00000225  62 61 FD 48/ 7F					VMOVDQA64		ZM_PTR [ RCX ], ZMM31		; store at destination address
+ 0000021E  62 61 FD 48/ 7F					VMOVDQA64		ZM_PTR [ RCX ], ZMM31		; store at destination address
 	   39
 
 					ELSEIF __UseY
 					ENDIF
 
- 0000022B  C3							RET		
- 0000022C			and_u			ENDP
+ 00000224  C3							RET		
+ 00000225			and_u			ENDP
 
 				;--------------------------------------------------------------------------------------------------------------------------------------------------------------
 				;			or_u		-	logical 'OR' bits in lh_op, rh_op, put result in destination
@@ -631,7 +637,7 @@ ui512b.asm						     Page 1 - 1
 				;			rh_op		-	Address of 64 byte alligned array of 8 64-bit words (QWORDS) 512 bits (in R8)
 				;			returns		-	nothing (0)
 
- 0000022C			or_u			PROC			PUBLIC
+ 00000225			or_u			PROC			PUBLIC
 
 								CheckAlign		RCX
 								CheckAlign		RDX
@@ -639,18 +645,18 @@ ui512b.asm						     Page 1 - 1
 
 					IF __UseZ
 					
- 0000022C  62 61 FD 48/ 6F					VMOVDQA64		ZMM31, ZM_PTR [ RDX ]			
+ 00000225  62 61 FD 48/ 6F					VMOVDQA64		ZMM31, ZM_PTR [ RDX ]			
 	   3A
- 00000232  62 41 85 40/ EB					VPORQ			ZMM31, ZMM31, ZM_PTR [ R8 ]
+ 0000022B  62 41 85 40/ EB					VPORQ			ZMM31, ZMM31, ZM_PTR [ R8 ]
 	   38
- 00000238  62 61 FD 48/ 7F					VMOVDQA64		ZM_PTR [ RCX ], ZMM31
+ 00000231  62 61 FD 48/ 7F					VMOVDQA64		ZM_PTR [ RCX ], ZMM31
 	   39
 
 					ELSEIF __UseY
 					ENDIF
 
- 0000023E  C3							RET 
- 0000023F			or_u			ENDP
+ 00000237  C3							RET 
+ 00000238			or_u			ENDP
 
 
 				;--------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -660,24 +666,24 @@ ui512b.asm						     Page 1 - 1
 				;			source		-	Address of 64 byte alligned array of 8 64-bit words (QWORDS) 512 bits (in RDX)
 				;			returns		-	nothing (0)
 
- 0000023F			not_u			PROC			PUBLIC
+ 00000238			not_u			PROC			PUBLIC
 
 								CheckAlign		RCX
 								CheckAlign		RDX
 
 					IF __UseZ
 					
- 0000023F  62 61 FD 48/ 6F					VMOVDQA64		ZMM31, ZM_PTR [RDX]			
+ 00000238  62 61 FD 48/ 6F					VMOVDQA64		ZMM31, ZM_PTR [RDX]			
 	   3A
- 00000245  62 61 85 40/ DF					VPANDNQ			ZMM31, ZMM31, qOnes			; qOnes (declared in the data section of this module) is 8 QWORDS, binary all ones
+ 0000023E  62 61 85 40/ DF					VPANDNQ			ZMM31, ZMM31, qOnes			; qOnes (declared in the data section of this module) is 8 QWORDS, binary all ones
 	   3D 00000000 R
- 0000024F  62 61 FD 48/ 7F					VMOVDQA64		ZM_PTR [RCX], ZMM31
+ 00000248  62 61 FD 48/ 7F					VMOVDQA64		ZM_PTR [RCX], ZMM31
 	   39
 
 					ELSEIF __UseY
 					ENDIF
- 00000255  C3							RET	
- 00000256			not_u			ENDP
+ 0000024E  C3							RET	
+ 0000024F			not_u			ENDP
 
 
 				;--------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -688,36 +694,36 @@ ui512b.asm						     Page 1 - 1
 				;			Note:	a returned zero means the significant bit is bit0 of the eighth word of the 512bit source parameter; (the right most bit)
 				;					a returned 511 means bit63 of the first word (the left most bit)
 
- 00000256			msb_u			PROC			PUBLIC
+ 0000024F			msb_u			PROC			PUBLIC
 								
 								CheckAlign		RCX
 
 					IF __UseZ
 
- 00000256  62 61 FD 48/ 6F					VMOVDQA64		ZMM31, ZM_PTR [RCX]			; Load source 
+ 0000024F  62 61 FD 48/ 6F					VMOVDQA64		ZMM31, ZM_PTR [RCX]			; Load source 
 	   39
- 0000025C  62 92 85 40/ 27					VPTESTMQ		K1, ZMM31, ZMM31			; find non-zero words (if any)
+ 00000255  62 92 85 40/ 27					VPTESTMQ		K1, ZMM31, ZMM31			; find non-zero words (if any)
 	   CF
- 00000262  C5 F9/ 93 C1						KMOVB			EAX, K1
- 00000266  83 F8 00						CMP				EAX, 0						; exit with -1 if all eight qwords are zero (no significant bit)
- 00000269  74 24						JE				@@zero
- 0000026B  0F BC C8						BSF				ECX, EAX					; determine index of word from first non-zero bit in mask
- 0000026E  48/ C7 C0						MOV				RAX, 7
+ 0000025B  C5 F9/ 93 C1						KMOVB			EAX, K1
+ 0000025F  83 F8 00						CMP				EAX, 0						; exit with -1 if all eight qwords are zero (no significant bit)
+ 00000262  74 24						JE				@@zero
+ 00000264  0F BC C8						BSF				ECX, EAX					; determine index of word from first non-zero bit in mask
+ 00000267  48/ C7 C0						MOV				RAX, 7
 	   00000007
- 00000275  48/ 2B C1						SUB				RAX, RCX					; convert index to offset
- 00000278  48/ C1 E0 06						SHL				RAX, 6
- 0000027C  62 62 FD C9/ 8B					VPCOMPRESSQ		ZMM0 {k1}{z}, ZMM31
+ 0000026E  48/ 2B C1						SUB				RAX, RCX					; convert index to offset
+ 00000271  48/ C1 E0 06						SHL				RAX, 6
+ 00000275  62 62 FD C9/ 8B					VPCOMPRESSQ		ZMM0 {k1}{z}, ZMM31
 	   F8
- 00000282  C4 E1 F9/ 7E C1					VMOVQ			RCX, XMM0					; extract the non-zero word
- 00000287  48/ 0F BD C9						BSR				RCX, RCX					; get the index of the non-zero bit within the word
- 0000028B  48/ 03 C1						ADD				RAX, RCX					; Word index * 64 + bit index becomes bit index to first non-zero bit (0 to 511, where )
+ 0000027B  C4 E1 F9/ 7E C1					VMOVQ			RCX, XMM0					; extract the non-zero word
+ 00000280  48/ 0F BD C9						BSR				RCX, RCX					; get the index of the non-zero bit within the word
+ 00000284  48/ 03 C1						ADD				RAX, RCX					; Word index * 64 + bit index becomes bit index to first non-zero bit (0 to 511, where )
+ 00000287  C3							RET
+ 00000288			@@zero:
+ 00000288  8B 05 00000014 R					MOV				EAX, ret_1
  0000028E  C3							RET
- 0000028F			@@zero:
- 0000028F  8B 05 00000008 R					MOV				EAX, ret_1
- 00000295  C3							RET
 					ELSE
 					ENDIF
- 00000296			msb_u			ENDP
+ 0000028F			msb_u			ENDP
 
 				;--------------------------------------------------------------------------------------------------------------------------------------------------------------
 				;			lsb_u		-	find least significant bit in supplied source 512bit (8 QWORDS)
@@ -727,47 +733,47 @@ ui512b.asm						     Page 1 - 1
 				;			Note:	a returned zero means the significant bit is bit0 of the eighth word of the 512bit source parameter; (the right most bit)
 				;					a returned 511 means bit63 of the first word (the left most bit)
 
- 00000296			lsb_u			PROC			PUBLIC
+ 0000028F			lsb_u			PROC			PUBLIC
 								
 								CheckAlign		RCX
 
 					IF __UseZ
- 00000296  41/ 51						Push			R9
- 00000298  62 61 FD 48/ 6F					VMOVDQA64		ZMM31, ZM_PTR [RCX]			; Load source 
+ 0000028F  41/ 51						Push			R9
+ 00000291  62 61 FD 48/ 6F					VMOVDQA64		ZMM31, ZM_PTR [ RCX ]		; Load source 
 	   39
- 0000029E  62 92 85 40/ 27					VPTESTMQ		K1, ZMM31, ZMM31			; find non-zero words (if any)
+ 00000297  62 92 85 40/ 27					VPTESTMQ		K1, ZMM31, ZMM31			; find non-zero words (if any)
 	   CF
- 000002A4  C5 F9/ 93 C1						KMOVB			EAX, K1
- 000002A8  83 F8 00						CMP				EAX, 0						; exit with -1 if all eight qwords are zero (no significant bit)
- 000002AB  74 33						JE				@@zero
- 000002AD  0F BD C8						BSR				ECX, EAX					; determine index of word from last non-zero bit in mask
- 000002B0  48/ C7 C0						MOV				RAX, 7
+ 0000029D  C5 F9/ 93 C1						KMOVB			EAX, K1
+ 000002A1  83 F8 00						CMP				EAX, 0						; exit with -1 if all eight qwords are zero (no significant bit)
+ 000002A4  74 33						JE				@@zero
+ 000002A6  0F BD C8						BSR				ECX, EAX					; determine index of word from last non-zero bit in mask
+ 000002A9  48/ C7 C0						MOV				RAX, 7
 	   00000007
- 000002B7  48/ 2B C1						SUB				RAX, RCX					; convert index to offset
- 000002BA  48/ C1 E0 06						SHL				RAX, 6
- 000002BE  4D/ 33 C9						XOR				R9, R9
- 000002C1  49/ FF C1						INC				R9
- 000002C4  49/ D3 E1						SHL				R9, CL
- 000002C7  C4 C1 79/ 92 D1					KMOVB			K2, R9
- 000002CC  62 62 FD CA/ 8B					VPCOMPRESSQ		ZMM0 {k2}{z}, ZMM31
+ 000002B0  48/ 2B C1						SUB				RAX, RCX					; convert index to offset
+ 000002B3  48/ C1 E0 06						SHL				RAX, 6
+ 000002B7  4D/ 33 C9						XOR				R9, R9
+ 000002BA  49/ FF C1						INC				R9
+ 000002BD  49/ D3 E1						SHL				R9, CL
+ 000002C0  C4 C1 79/ 92 D1					KMOVB			K2, R9
+ 000002C5  62 62 FD CA/ 8B					VPCOMPRESSQ		ZMM0 {k2}{z}, ZMM31
 	   F8
- 000002D2  C4 E1 F9/ 7E C1					VMOVQ			RCX, XMM0					; extract the non-zero word
- 000002D7  48/ 0F BD C9						BSR				RCX, RCX					; get the index of the non-zero bit within the word
- 000002DB  48/ 03 C1						ADD				RAX, RCX					; Word index * 64 + bit index becomes bit index to first non-zero bit (0 to 511, where )
- 000002DE  EB 06						JMP				@ret
- 000002E0			@@zero:
- 000002E0  8B 05 00000008 R					MOV				EAX, ret_1
- 000002E6			@ret:
- 000002E6  41/ 59						POP				R9
- 000002E8  C3							RET
+ 000002CB  C4 E1 F9/ 7E C1					VMOVQ			RCX, XMM0					; extract the non-zero word
+ 000002D0  48/ 0F BD C9						BSR				RCX, RCX					; get the index of the non-zero bit within the word
+ 000002D4  48/ 03 C1						ADD				RAX, RCX					; Word index * 64 + bit index becomes bit index to first non-zero bit (0 to 511, where )
+ 000002D7  EB 06						JMP				@ret
+ 000002D9			@@zero:
+ 000002D9  8B 05 00000014 R					MOV				EAX, ret_1
+ 000002DF			@ret:
+ 000002DF  41/ 59						POP				R9
+ 000002E1  C3							RET
 					ELSE
 					ENDIF
- 000002E9			lsb_u			ENDP
+ 000002E2			lsb_u			ENDP
 
 
 
 				END
-Microsoft (R) Macro Assembler (x64) Version 14.43.34808.0   03/05/25 12:08:56
+Microsoft (R) Macro Assembler (x64) Version 14.44.35209.0   06/30/25 22:20:11
 ui512b.asm						     Symbols 2 - 1
 
 
@@ -778,11 +784,30 @@ Macros:
                 N a m e                 Type
 
 CheckAlign . . . . . . . . . . .	Proc
+Copy512Q . . . . . . . . . . . .	Proc
 Copy512  . . . . . . . . . . . .	Proc
 GetZatMask . . . . . . . . . . .	Proc
 MemConstants . . . . . . . . . .	Proc
 SetZatMask . . . . . . . . . . .	Proc
+Zero512Q . . . . . . . . . . . .	Proc
 Zero512  . . . . . . . . . . . .	Proc
+
+
+Records:
+
+                N a m e                  Width     # fields
+                                         Shift     Width     Mask      Initial
+
+kMask  . . . . . . . . . . . . .	 00000009      00000009
+  b8 . . . . . . . . . . . . . .	 00000008      00000001	     0100     ?
+  b7 . . . . . . . . . . . . . .	 00000007      00000001	     0080     ?
+  b6 . . . . . . . . . . . . . .	 00000006      00000001	     0040     ?
+  b5 . . . . . . . . . . . . . .	 00000005      00000001	     0020     ?
+  b4 . . . . . . . . . . . . . .	 00000004      00000001	     0010     ?
+  b3 . . . . . . . . . . . . . .	 00000003      00000001	     0008     ?
+  b2 . . . . . . . . . . . . . .	 00000002      00000001	     0004     ?
+  b1 . . . . . . . . . . . . . .	 00000001      00000001	     0002     ?
+  b0 . . . . . . . . . . . . . .	 00000000      00000001	     0001     ?
 
 
 Segments:
@@ -791,43 +816,43 @@ Segments:
 
 CONST  . . . . . . . . . . . . .	 00000000 16	  'CONST'	 ReadOnly
 aligned64  . . . . . . . . . . .	 00000040 64	  
-ui512b . . . . . . . . . . . . .	 000002E9 16	  'CODE'	
+ui512b . . . . . . . . . . . . .	 000002E2 16	  'CODE'	
 
 
 Procedures, parameters, and locals:
 
                 N a m e                 Type     Value    Attr
 
-and_u  . . . . . . . . . . . . .	P 	 00000219 ui512b	Length= 00000013 Public
-lsb_u  . . . . . . . . . . . . .	P 	 00000296 ui512b	Length= 00000053 Public
-  @@zero . . . . . . . . . . . .	L 	 000002E0 ui512b	
-  @ret . . . . . . . . . . . . .	L 	 000002E6 ui512b	
-msb_u  . . . . . . . . . . . . .	P 	 00000256 ui512b	Length= 00000040 Public
-  @@zero . . . . . . . . . . . .	L 	 0000028F ui512b	
-not_u  . . . . . . . . . . . . .	P 	 0000023F ui512b	Length= 00000017 Public
-or_u . . . . . . . . . . . . . .	P 	 0000022C ui512b	Length= 00000013 Public
-shl_u  . . . . . . . . . . . . .	P 	 00000117 ui512b	Length= 00000102 Public
-  @jt  . . . . . . . . . . . . .	L 	 00000195 ui512b	
-  @@1  . . . . . . . . . . . . .	L 	 000001D5 ui512b	
-  @@2  . . . . . . . . . . . . .	L 	 000001DE ui512b	
-  @@3  . . . . . . . . . . . . .	L 	 000001E7 ui512b	
-  @@4  . . . . . . . . . . . . .	L 	 000001F0 ui512b	
-  @@5  . . . . . . . . . . . . .	L 	 000001F9 ui512b	
-  @@6  . . . . . . . . . . . . .	L 	 00000202 ui512b	
-  @@7  . . . . . . . . . . . . .	L 	 0000020B ui512b	
-  @@E  . . . . . . . . . . . . .	L 	 00000212 ui512b	
-  @@ret  . . . . . . . . . . . .	L 	 00000218 ui512b	
-shr_u  . . . . . . . . . . . . .	P 	 00000015 ui512b	Length= 00000102 Public
-  @jt  . . . . . . . . . . . . .	L 	 00000093 ui512b	
-  @@1  . . . . . . . . . . . . .	L 	 000000D3 ui512b	
-  @@2  . . . . . . . . . . . . .	L 	 000000DC ui512b	
-  @@3  . . . . . . . . . . . . .	L 	 000000E5 ui512b	
-  @@4  . . . . . . . . . . . . .	L 	 000000EE ui512b	
-  @@5  . . . . . . . . . . . . .	L 	 000000F7 ui512b	
-  @@6  . . . . . . . . . . . . .	L 	 00000100 ui512b	
-  @@7  . . . . . . . . . . . . .	L 	 00000109 ui512b	
-  @@E  . . . . . . . . . . . . .	L 	 00000110 ui512b	
-  @@ret  . . . . . . . . . . . .	L 	 00000116 ui512b	
+and_u  . . . . . . . . . . . . .	P 	 00000212 ui512b	Length= 00000013 Public
+lsb_u  . . . . . . . . . . . . .	P 	 0000028F ui512b	Length= 00000053 Public
+  @@zero . . . . . . . . . . . .	L 	 000002D9 ui512b	
+  @ret . . . . . . . . . . . . .	L 	 000002DF ui512b	
+msb_u  . . . . . . . . . . . . .	P 	 0000024F ui512b	Length= 00000040 Public
+  @@zero . . . . . . . . . . . .	L 	 00000288 ui512b	
+not_u  . . . . . . . . . . . . .	P 	 00000238 ui512b	Length= 00000017 Public
+or_u . . . . . . . . . . . . . .	P 	 00000225 ui512b	Length= 00000013 Public
+shl_u  . . . . . . . . . . . . .	P 	 00000119 ui512b	Length= 000000F9 Public
+  @jt  . . . . . . . . . . . . .	L 	 0000018E ui512b	
+  @@1  . . . . . . . . . . . . .	L 	 000001CE ui512b	
+  @@2  . . . . . . . . . . . . .	L 	 000001D7 ui512b	
+  @@3  . . . . . . . . . . . . .	L 	 000001E0 ui512b	
+  @@4  . . . . . . . . . . . . .	L 	 000001E9 ui512b	
+  @@5  . . . . . . . . . . . . .	L 	 000001F2 ui512b	
+  @@6  . . . . . . . . . . . . .	L 	 000001FB ui512b	
+  @@7  . . . . . . . . . . . . .	L 	 00000204 ui512b	
+  @@E  . . . . . . . . . . . . .	L 	 0000020B ui512b	
+  @@ret  . . . . . . . . . . . .	L 	 00000211 ui512b	
+shr_u  . . . . . . . . . . . . .	P 	 00000028 ui512b	Length= 000000F1 Public
+  @jt  . . . . . . . . . . . . .	L 	 00000095 ui512b	
+  @@1  . . . . . . . . . . . . .	L 	 000000D5 ui512b	
+  @@2  . . . . . . . . . . . . .	L 	 000000DE ui512b	
+  @@3  . . . . . . . . . . . . .	L 	 000000E7 ui512b	
+  @@4  . . . . . . . . . . . . .	L 	 000000F0 ui512b	
+  @@5  . . . . . . . . . . . . .	L 	 000000F9 ui512b	
+  @@6  . . . . . . . . . . . . .	L 	 00000102 ui512b	
+  @@7  . . . . . . . . . . . . .	L 	 0000010B ui512b	
+  @@E  . . . . . . . . . . . . .	L 	 00000112 ui512b	
+  @@ret  . . . . . . . . . . . .	L 	 00000118 ui512b	
 
 
 Symbols:
@@ -869,24 +894,26 @@ compare_u  . . . . . . . . . . .	L 	 00000000 External
 copy_u . . . . . . . . . . . . .	L 	 00000000 External
 m32BCST  . . . . . . . . . . . .	Text   	 DWORD BCST
 m64BCST  . . . . . . . . . . . .	Text   	 QWORD BCST
-mskAll8  . . . . . . . . . . . .	Byte	 0000000C ui512b	
-mskB0  . . . . . . . . . . . . .	Byte	 0000000D ui512b	
-mskB1  . . . . . . . . . . . . .	Byte	 0000000E ui512b	
-mskB2  . . . . . . . . . . . . .	Byte	 0000000F ui512b	
-mskB3  . . . . . . . . . . . . .	Byte	 00000010 ui512b	
-mskB4  . . . . . . . . . . . . .	Byte	 00000011 ui512b	
-mskB5  . . . . . . . . . . . . .	Byte	 00000012 ui512b	
-mskB6  . . . . . . . . . . . . .	Byte	 00000013 ui512b	
-mskB7  . . . . . . . . . . . . .	Byte	 00000014 ui512b	
+mskAll8  . . . . . . . . . . . .	Byte	 00000018 ui512b	
+mskB0  . . . . . . . . . . . . .	Byte	 00000019 ui512b	
+mskB1  . . . . . . . . . . . . .	Byte	 0000001A ui512b	
+mskB2  . . . . . . . . . . . . .	Byte	 0000001B ui512b	
+mskB3  . . . . . . . . . . . . .	Byte	 0000001C ui512b	
+mskB4  . . . . . . . . . . . . .	Byte	 0000001D ui512b	
+mskB5  . . . . . . . . . . . . .	Byte	 0000001E ui512b	
+mskB6  . . . . . . . . . . . . .	Byte	 0000001F ui512b	
+mskB7  . . . . . . . . . . . . .	Byte	 00000020 ui512b	
+mskHex100  . . . . . . . . . . .	DWord	 00000008 ui512b	
 qOnes  . . . . . . . . . . . . .	QWord	 00000000 aligned64	
-ret0 . . . . . . . . . . . . . .	DWord	 00000000 ui512b	
-ret1 . . . . . . . . . . . . . .	DWord	 00000004 ui512b	
-ret_1  . . . . . . . . . . . . .	DWord	 00000008 ui512b	
+ret0 . . . . . . . . . . . . . .	DWord	 0000000C ui512b	
+ret1 . . . . . . . . . . . . . .	DWord	 00000010 ui512b	
+ret_1  . . . . . . . . . . . . .	DWord	 00000014 ui512b	
 set_uT64 . . . . . . . . . . . .	L 	 00000000 External
 sub_uT64 . . . . . . . . . . . .	L 	 00000000 External
 sub_u  . . . . . . . . . . . . .	L 	 00000000 External
 ui512aMacros_INC . . . . . . . .	Text   	 1
 ui512bMacros_INC . . . . . . . .	Text   	 1
+zeroQ  . . . . . . . . . . . . .	QWord	 00000000 ui512b	
 zero_u . . . . . . . . . . . . .	L 	 00000000 External
 
 	   0 Warnings
