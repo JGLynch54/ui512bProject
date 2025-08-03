@@ -13,7 +13,7 @@
 //               ui512md provides multiply and divide.
 //
 //				It is written in assembly language, using the MASM(ml64) assembler provided as an option within Visual Studio.
-//				(currently using VS Community 2022 17.9.6)
+//				(currently using VS Community 2022 17.14.10)
 //
 //				It provides external signatures that allow linkage to C and C++ programs,
 //				where a shell / wrapper could encapsulate the methods as part of an object.
@@ -24,10 +24,10 @@
 //				If processor extensions are used, the caller must align the variables declared and passed
 //				on the appropriate byte boundary(e.g. alignas 64 for 512)
 //
-//				This module is very light - weight(less than 1K bytes) and relatively fast,
+//				This module is very light - weight(less than 2K bytes) and relatively fast,
 //				but is not intended for all processor types or all environments.
 //
-//				Use for private (hobbyist), or instructional, or as an example for more ambitious projects is all it is meant to be.
+//				Use for private (hobbyist), or instructional, or as an example for more ambitious projects.
 //
 //		This sub - project: ui512aTests, is a unit test project that invokes each of the routines in the ui512a assembly.
 //		It runs each assembler proc with pseudo - random values.
@@ -53,6 +53,7 @@ namespace ui512bTests
 	public:
 
 		const s32 runcount = 2500;
+		const s32 regvercount = 5000;
 		const s32 timingcount = 100000000;
 
 		/// <summary>
@@ -144,6 +145,10 @@ namespace ui512bTests
 			{
 				Assert::AreEqual(0x00000000000000FFull, num2[j]);
 			};
+			string runmsg2 = "Shift right function testing. Shift ff within each word to the end of each word.\n";
+			Logger::WriteMessage(runmsg2.c_str());
+			Logger::WriteMessage(L"Passed. Tested expected values via assert.\n");
+
 			// shift into next word. Note: start validation at word 2 as most significant (index 0) word now zero
 			shftcnt = 64;
 			shr_u(num2, num1, shftcnt);
@@ -152,7 +157,9 @@ namespace ui512bTests
 			{
 				Assert::AreEqual(0xFF00000000000000ull, num2[j]);
 			};
-
+			string runmsg3 = "Shift right function testing. Shift ff into next word.\n";
+			Logger::WriteMessage(runmsg3.c_str());
+			Logger::WriteMessage(L"Passed. Tested expected values via assert.\n");
 			// run same tests, with destination same as source, note: second test works on results of first now
 			for (int j = 0; j < 8; j++)
 			{
@@ -164,6 +171,9 @@ namespace ui512bTests
 			{
 				Assert::AreEqual(0x00000000000000FFull, num1[j]);
 			};
+			string runmsg4 = "Shift right function testing. Shift ff into next word. Destiination same as source\n";
+			Logger::WriteMessage(runmsg4.c_str());
+			Logger::WriteMessage(L"Passed. Tested expected values via assert.\n");
 			// shift into next word. Note: start at word 2 as first word now zero
 			shftcnt = 64;
 			shr_u(num1, num1, shftcnt);
@@ -205,6 +215,9 @@ namespace ui512bTests
 
 			Assert::AreEqual(1ull, wlk2[7]);
 			Assert::AreEqual(1ull, wlk1[7]);
+			string runmsg5 = "Shift right function testing.Walk a bit from msb to lsb. Verify values each step\n";
+			Logger::WriteMessage(runmsg5.c_str());
+			Logger::WriteMessage(L"Passed. Tested expected values via assert.\n");
 
 			string runmsg = "Shift right function testing. Ran tests " + to_string(4 + 512 + 511) + " times, with selected bit values.\n";
 			Logger::WriteMessage(runmsg.c_str());
@@ -231,6 +244,36 @@ namespace ui512bTests
 			};
 
 			string runmsg = "Shift right function timing. Ran " + to_string(timingcount) + " times.\n";
+			Logger::WriteMessage(runmsg.c_str());
+		};
+
+		TEST_METHOD(ui512bits_01_SHR_reg)
+		{
+			// shr_u function register verification.
+			//	Check register before call, verify non-volatile register remain unchanged after call.
+			regs r_before{};
+			regs r_after{};
+			u64 seed = 0;
+			alignas (64) u64 num1[8]{};
+			alignas (64) u64 num2[8]{};
+			alignas (64) u64 num3[8]{};
+			for (int i = 0; i < regvercount; i++)
+			{
+				for (int j = 0; j < 8; j++)
+				{
+					num2[j] = RandomU64(&seed);
+					num3[j] = RandomU64(&seed);
+				};
+				u64 val = RandomU64(&seed);
+				r_before.Clear();
+				reg_verify((u64*)&r_before);
+				shr_u(num1, num2, 127);
+				r_after.Clear();
+				reg_verify((u64*)&r_after);
+				Assert::IsTrue(r_before.AreEqual(&r_after), L"Register validation failed");
+			};
+
+			string runmsg = "shr_u function register validation. Ran " + to_string(regvercount) + " times.\n";
 			Logger::WriteMessage(runmsg.c_str());
 		};
 
@@ -339,6 +382,35 @@ namespace ui512bTests
 			Logger::WriteMessage(runmsg.c_str());
 		};
 
+		TEST_METHOD(ui512bits_02_SHL_reg)
+		{
+			// shl_u function register verification.
+			//	Check register before call, verify non-volatile register remain unchanged after call.
+			regs r_before{};
+			regs r_after{};
+			u64 seed = 0;
+			alignas (64) u64 num1[8]{};
+			alignas (64) u64 num2[8]{};
+			alignas (64) u64 num3[8]{};
+			for (int i = 0; i < regvercount; i++)
+			{
+				for (int j = 0; j < 8; j++)
+				{
+					num2[j] = RandomU64(&seed);
+					num3[j] = RandomU64(&seed);
+				};
+				u64 val = RandomU64(&seed);
+				r_before.Clear();
+				reg_verify((u64*)&r_before);
+				shl_u(num1, num2, 213);
+				r_after.Clear();
+				reg_verify((u64*)&r_after);
+				Assert::IsTrue(r_before.AreEqual(&r_after), L"Register validation failed");
+			};
+
+			string runmsg = "shl_u function register validation. Ran " + to_string(regvercount) + " times.\n";
+			Logger::WriteMessage(runmsg.c_str());
+		};
 		TEST_METHOD(ui512bits_03_and)
 		{
 			u64 seed = 0;
@@ -387,6 +459,35 @@ namespace ui512bTests
 			Logger::WriteMessage(runmsg.c_str());
 		};
 
+		TEST_METHOD(ui512bits_03_AND_reg)
+		{
+			// and_u function register verification.
+			//	Check register before call, verify non-volatile register remain unchanged after call.
+			regs r_before{};
+			regs r_after{};
+			u64 seed = 0;
+			alignas (64) u64 num1[8]{};
+			alignas (64) u64 num2[8]{};
+			alignas (64) u64 num3[8]{};
+			for (int i = 0; i < regvercount; i++)
+			{
+				for (int j = 0; j < 8; j++)
+				{
+					num2[j] = RandomU64(&seed);
+					num3[j] = RandomU64(&seed);
+				};
+				u64 val = RandomU64(&seed);
+				r_before.Clear();
+				reg_verify((u64*)&r_before);
+				and_u(num1, num2, num3);
+				r_after.Clear();
+				reg_verify((u64*)&r_after);
+				Assert::IsTrue(r_before.AreEqual(&r_after), L"Register validation failed");
+			};
+
+			string runmsg = "not_u function register validation. Ran " + to_string(regvercount) + " times.\n";
+			Logger::WriteMessage(runmsg.c_str());
+		};
 		TEST_METHOD(ui512bits_04_or)
 		{
 			u64 seed = 0;
@@ -435,6 +536,33 @@ namespace ui512bTests
 			Logger::WriteMessage(runmsg.c_str());
 		};
 
+		TEST_METHOD(ui512bits_04_OR_reg)
+		{
+			// or_u function register verification.
+			//	Check register before call, verify non-volatile register remain unchanged after call.
+			regs r_before{};
+			regs r_after{};
+			u64 seed = 0;
+			alignas (64) u64 num1[8]{};
+			alignas (64) u64 num2[8]{};
+			for (int i = 0; i < regvercount; i++)
+			{
+				for (int j = 0; j < 8; j++)
+				{
+					num1[j] = RandomU64(&seed);
+				};
+				u64 val = RandomU64(&seed);
+				r_before.Clear();
+				reg_verify((u64*)&r_before);
+				or_u(num2, num2, num1);
+				r_after.Clear();
+				reg_verify((u64*)&r_after);
+				Assert::IsTrue(r_before.AreEqual(&r_after), L"Register validation failed");
+			};
+
+			string runmsg = "or_u function register validation. Ran " + to_string(regvercount) + " times.\n";
+			Logger::WriteMessage(runmsg.c_str());
+		};
 		TEST_METHOD(ui512bits_05_not)
 		{
 			u64 seed = 0;
@@ -480,6 +608,34 @@ namespace ui512bTests
 			Logger::WriteMessage(runmsg.c_str());
 		};
 
+
+		TEST_METHOD(ui512bits_05_NOT_reg)
+		{
+			// not_u function register verification.
+			//	Check register before call, verify non-volatile register remain unchanged after call.
+			regs r_before{};
+			regs r_after{};
+			u64 seed = 0;
+			alignas (64) u64 num1[8]{};
+			alignas (64) u64 num2[8]{};
+			for (int i = 0; i < regvercount; i++)
+			{
+				for (int j = 0; j < 8; j++)
+				{
+					num1[j] = RandomU64(&seed);
+				};
+				u64 val = RandomU64(&seed);
+				r_before.Clear();
+				reg_verify((u64*)&r_before);
+				not_u(num2, num1);
+				r_after.Clear();
+				reg_verify((u64*)&r_after);
+				Assert::IsTrue(r_before.AreEqual(&r_after), L"Register validation failed");
+			};
+
+			string runmsg = "not_u function register validation. Ran " + to_string(regvercount) + " times.\n";
+			Logger::WriteMessage(runmsg.c_str());
+		};
 		TEST_METHOD(ui512bits_06_msb)
 		{
 			u64 seed = 0;
@@ -554,6 +710,33 @@ namespace ui512bTests
 			Logger::WriteMessage(runmsg.c_str());
 		};
 
+		TEST_METHOD(ui512bits_06_msb_reg)
+		{
+			// msb_u function register verification.
+			//	Check register before call, verify non-volatile register remain unchanged after call.
+			regs r_before{};
+			regs r_after{};
+			u64 seed = 0;
+			alignas (64) u64 num1[8]{};
+			for (int i = 0; i < regvercount; i++)
+			{
+				for (int j = 0; j < 8; j++)
+				{
+					num1[j] = RandomU64(&seed);
+				};
+				u64 val = RandomU64(&seed);
+				r_before.Clear();
+				reg_verify((u64*)&r_before);
+				s16 result = msb_u(num1);
+				r_after.Clear();
+				reg_verify((u64*)&r_after);
+				Assert::IsTrue(r_before.AreEqual(&r_after), L"Register validation failed");
+			};
+
+			string runmsg = "msb_u function register validation. Ran " + to_string(regvercount) + " times.\n";
+			Logger::WriteMessage(runmsg.c_str());
+		};
+
 		TEST_METHOD(ui512bits_07_lsb)
 		{
 			u64 seed = 0;
@@ -624,6 +807,33 @@ namespace ui512bTests
 			};
 
 			string runmsg = "LSB function timing. Ran " + to_string(timingcount) + " times.\n";
+			Logger::WriteMessage(runmsg.c_str());
+		};
+
+		TEST_METHOD(ui512bits_07_lsb_reg)
+		{
+			// leb_u function register verification.
+			//	Check register before call, verify non-volatile register remain unchanged after call.
+			regs r_before{};
+			regs r_after{};
+			u64 seed = 0;
+			alignas (64) u64 num1[8]{};
+			for (int i = 0; i < regvercount; i++)
+			{
+				for (int j = 0; j < 8; j++)
+				{
+					num1[j] = RandomU64(&seed);
+				};
+				u64 val = RandomU64(&seed);
+				r_before.Clear();
+				reg_verify((u64*)&r_before);
+				s16 result = lsb_u(num1);
+				r_after.Clear();
+				reg_verify((u64*)&r_after);
+				Assert::IsTrue(r_before.AreEqual(&r_after), L"Register validation failed");
+			};
+
+			string runmsg = "lsb_u function register validation. Ran " + to_string(regvercount) + " times.\n";
 			Logger::WriteMessage(runmsg.c_str());
 		};
 	};

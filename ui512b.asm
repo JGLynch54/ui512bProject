@@ -15,7 +15,7 @@
 ;				ui512md provides multiply and divide.
 ;
 ;				It is written in assembly language, using the MASM (ml64) assembler provided as an option within Visual Studio.
-;				(currently using VS Community 2022 17.9.6)
+;				(currently using VS Community 2022 17.14.10)
 ;
 ;				It provides external signatures that allow linkage to C and C++ programs,
 ;				where a shell/wrapper could encapsulate the methods as part of an object.
@@ -29,7 +29,7 @@
 ;				This module is very light-weight (less than 2K bytes) and relatively fast,
 ;				but is not intended for all processor types or all environments. 
 ;
-;				Use for private (hobbyist), or instructional, or as an example for more ambitious projects is all it is meant to be.
+;				Use for private (hobbyist), or instructional, or as an example for more ambitious projects.
 ;
 ;--------------------------------------------------------------------------------------------------------------------------------------------------------------
 ;
@@ -60,17 +60,13 @@
 				INCLUDE			ui512aMacros.inc
 				INCLUDE			ui512bMacros.inc
 				OPTION			casemap:none
-.CONST
 
-aligned64		SEGMENT         ALIGN (64)
-qOnes			QWORD           8 DUP (0ffffffffffffffffh)
-aligned64		ENDS
+ui512D			SEGMENT			'DATA'	ALIGN (64)					; Declare a data segment	
+				MemConstants										; Generate memory resident constants
+ui512D			ENDS												; end of data segment
 
-.CODE			ui512b
-				OPTION          PROLOGUE:none
-				OPTION          EPILOGUE:none
-
-				MemConstants
+				VerifyRegs											; if option is turned on (in macros include),
+																	; generate a debug routine for register integrity validation
 ;--------------------------------------------------------------------------------------------------------------------------------------------------------------
 ;			shr_u		-	shift supplied source 512bit (8 QWORDS) right, put in destination
 ;			Prototype:		void shr_u( u64* destination, u64* source, u32 bits_to_shift)
@@ -80,8 +76,7 @@ aligned64		ENDS
 ;			returns		-	nothing (0)
 ;			Note: unwound loop(s). More instructions, but fewer executed (no loop save, setup, compare loop), faster, fewer regs used
 
-shr_u			PROC			PUBLIC
-
+				Leaf_Entry		shr_u, ui512
 				CheckAlign		RCX
 				CheckAlign		RDX
 
@@ -95,6 +90,7 @@ shr_u			PROC			PUBLIC
 				CMP				RCX, RDX
 				JE				@@ret							; destination is the same as the source: no copy needed
 				Copy512			RCX, RDX						; no shift, just copy (destination, source already in regs)
+@@ret:
 				RET
 @@:
 
@@ -117,24 +113,34 @@ shr_u			PROC			PUBLIC
 @jt:
 				QWORD			@@E, @@1, @@2, @@3, @@4, @@5, @@6, @@7
 @@1:			VALIGNQ			ZMM31, ZMM31, ZMM28, 7			; shifts words in ZMM31 right 7, fills with zero, resulting seven plus filled zero to ZMM31
-				JMP				@@E
-@@2:			VALIGNQ			ZMM31, ZMM31, ZMM28, 6
-				JMP				@@E
-@@3:			VALIGNQ			ZMM31, ZMM31, ZMM28, 5
-				JMP				@@E
-@@4:			VALIGNQ			ZMM31, ZMM31, ZMM28, 4
-				JMP				@@E
-@@5:			VALIGNQ			ZMM31, ZMM31, ZMM28, 3
-				JMP				@@E
-@@6:			VALIGNQ			ZMM31, ZMM31, ZMM28, 2
-				JMP				@@E
-@@7:			VALIGNQ			ZMM31, ZMM31, ZMM28, 1
-
 @@E:			VMOVDQA64		ZM_PTR [ RCX ], ZMM31			; store result at callers destination
-@@ret:			RET	
+				RET
+
+@@2:			VALIGNQ			ZMM31, ZMM31, ZMM28, 6
+				VMOVDQA64		ZM_PTR [ RCX ], ZMM31			; store result at callers destination
+				RET
+
+@@3:			VALIGNQ			ZMM31, ZMM31, ZMM28, 5
+				VMOVDQA64		ZM_PTR [ RCX ], ZMM31			; store result at callers destination
+				RET
+
+@@4:			VALIGNQ			ZMM31, ZMM31, ZMM28, 4
+				VMOVDQA64		ZM_PTR [ RCX ], ZMM31			; store result at callers destination
+				RET
+
+@@5:			VALIGNQ			ZMM31, ZMM31, ZMM28, 3
+				VMOVDQA64		ZM_PTR [ RCX ], ZMM31			; store result at callers destination
+				RET
+
+@@6:			VALIGNQ			ZMM31, ZMM31, ZMM28, 2
+				VMOVDQA64		ZM_PTR [ RCX ], ZMM31			; store result at callers destination
+				RET
+
+@@7:			VALIGNQ			ZMM31, ZMM31, ZMM28, 1
+				VMOVDQA64		ZM_PTR [ RCX ], ZMM31			; store result at callers destination
+				RET	
 
 	ELSE
-
 ;	save non-volatile regs to be used as work regs			
 				PUSH			R12
 				PUSH			R13
@@ -315,11 +321,9 @@ S7:				MOV				Q_PTR [ RCX ] [ 0 * 8 ], RAX
 				POP				R14
 				POP				R13
 				POP				R12
-@@ret:
 				RET
-	ENDIF
-	
-shr_u			ENDP
+	ENDIF	
+				Leaf_End		shr_u, ui512
 
 
 ;--------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -330,26 +334,25 @@ shr_u			ENDP
 ;			bits		-	Number of bits to shift. Will fill with zeros, truncate those shifted out (in R8W)
 ;			returns		-	nothing (0)
 
-shl_u			PROC			PUBLIC
-
+				Leaf_Entry		shl_u, ui512
 				CheckAlign		RCX
 				CheckAlign		RDX
 
 				CMP				R8W, 512					; handle edge case, shift 512 or more bits
 				JL				@F
 				Zero512			RCX							; zero destination
-				JMP				@@ret
+				RET
 @@:
 				AND				R8, 511						; mask out hghbits above shift count, test for 0
 				JNE				@F							; handle edge case, shift zero bits
 				CMP				RCX, RDX
-				JE				@@ret
+				JE				@@r
 				Copy512			RCX, RDX					; no shift, just copy (destination, source already in regs)
-				JMP				@@ret
+@@r:
+				RET
 @@:
 
-	IF __UseZ
-	
+	IF __UseZ	
 				VMOVDQA64		ZMM31, ZM_PTR [ RDX ]		; load the 8 qwords into zmm reg (note: word order)
 				MOVZX			RAX, R8W
 				AND				AX, 03fh
@@ -369,25 +372,34 @@ shl_u			PROC			PUBLIC
 				QWORD			@@E, @@1, @@2, @@3, @@4, @@5, @@6, @@7
 ;			Do the shifts of multiples of 64 bits (words)
 @@1:			VALIGNQ			ZMM31, ZMM28, ZMM31, 1
-				JMP				@@E
-@@2:			VALIGNQ			ZMM31, ZMM28, ZMM31, 2
-				JMP				@@E
-@@3:			VALIGNQ			ZMM31, ZMM28, ZMM31, 3
-				JMP				@@E
-@@4:			VALIGNQ			ZMM31, ZMM28, ZMM31, 4
-				JMP				@@E
-@@5:			VALIGNQ			ZMM31, ZMM28, ZMM31, 5
-				JMP				@@E
-@@6:			VALIGNQ			ZMM31, ZMM28, ZMM31, 6
-				JMP				@@E
-@@7:			VALIGNQ			ZMM31, ZMM28, ZMM31, 7
-
 @@E:			VMOVDQA64		ZM_PTR [ RCX ], ZMM31
-@@ret:
+				RET
+
+@@2:			VALIGNQ			ZMM31, ZMM28, ZMM31, 2
+				VMOVDQA64		ZM_PTR [ RCX ], ZMM31
+				RET
+
+@@3:			VALIGNQ			ZMM31, ZMM28, ZMM31, 3
+				VMOVDQA64		ZM_PTR [ RCX ], ZMM31
+				RET
+
+@@4:			VALIGNQ			ZMM31, ZMM28, ZMM31, 4
+				VMOVDQA64		ZM_PTR [ RCX ], ZMM31
+				RET
+
+@@5:			VALIGNQ			ZMM31, ZMM28, ZMM31, 5
+				VMOVDQA64		ZM_PTR [ RCX ], ZMM31
+				RET
+
+@@6:			VALIGNQ			ZMM31, ZMM28, ZMM31, 6
+				VMOVDQA64		ZM_PTR [ RCX ], ZMM31
+				RET
+
+@@7:			VALIGNQ			ZMM31, ZMM28, ZMM31, 7
+				VMOVDQA64		ZM_PTR [ RCX ], ZMM31
 				RET
 				
 	ELSE
-
 ;	save non-volitile regs to be used as work regs			
 				PUSH			R12
 				PUSH			R13
@@ -580,8 +592,7 @@ shl_u			PROC			PUBLIC
 				RET
 
 	ENDIF
-
-shl_u			ENDP
+				Leaf_End		shl_u, ui512
 
 
 ;--------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -591,20 +602,17 @@ shl_u			ENDP
 ;			lh_op		-	Address of 64 byte alligned array of 8 64-bit words (QWORDS) 512 bits (in RDX)
 ;			rh_op		-	Address of 64 byte alligned array of 8 64-bit words (QWORDS) 512 bits (in R8)
 ;			returns		-	nothing (0)
-and_u			PROC			PUBLIC 
-
+				Leaf_Entry		and_u, ui512
 				CheckAlign		RCX
 				CheckAlign		RDX
 				CheckAlign		R8
 
-	IF __UseZ
-	
+	IF __UseZ	
 				VMOVDQA64		ZMM31, ZM_PTR [ RDX ]		; load lh_op	
 				VPANDQ			ZMM31, ZMM31, ZM_PTR [ R8 ]	; 'AND' with rh_op
 				VMOVDQA64		ZM_PTR [ RCX ], ZMM31		; store at destination address
 
 	ELSEIF __UseY
-
 				VMOVDQA64		YMM4, YM_PTR [ RDX + 0 * 8 ]
 				VPANDQ			YMM5, YMM4, YM_PTR [ R8 + 0 * 8 ]
 				VMOVDQA64		YM_PTR [ RCX + 0 * 8 ], YMM5
@@ -613,7 +621,6 @@ and_u			PROC			PUBLIC
 				VMOVDQA64		YM_PTR [ RCX + 4 * 8 ], YMM3
 
 	ELSEIF __UseX
-
 				MOVDQA			XMM4, XM_PTR [ RDX + 0 * 8 ]
 				PAND			XMM4, XM_PTR [ R8 + 0 * 8]
 				MOVDQA			XM_PTR [ RCX + 0 * 8 ], XMM4
@@ -628,36 +635,15 @@ and_u			PROC			PUBLIC
 				MOVDQA			XM_PTR [ RCX + 6 * 8 ], XMM5
 
 	ELSE
-
-				MOV				RAX, Q_PTR [ RDX ] [ 0 * 8 ]
-				AND				RAX, Q_PTR [ R8 ] [ 0 * 8 ]
-				MOV				Q_PTR [ RCX ] [ 0 * 8 ], RAX
-				MOV				RAX, Q_PTR [ RDX ] [ 1 * 8 ]
-				AND				RAX, Q_PTR [ R8 ] [ 1 * 8 ]
-				MOV				Q_PTR [ RCX ] [ 1 * 8 ], RAX
-				MOV				RAX, Q_PTR [ RDX ] [ 2 * 8 ]
-				AND				RAX, Q_PTR [ R8 ] [ 2 * 8 ]
-				MOV				Q_PTR [ RCX ] [ 2 * 8 ], RAX
-				MOV				RAX, Q_PTR [ RDX ] [ 3 * 8 ]
-				AND				RAX, Q_PTR [ R8 ] [ 3 * 8 ]
-				MOV				Q_PTR [ RCX ] [ 3 * 8 ], RAX
-				MOV				RAX, Q_PTR [ RDX ] [ 4 * 8 ]
-				AND				RAX, Q_PTR [ R8 ] [ 4 * 8 ]
-				MOV				Q_PTR [ RCX ] [ 4 * 8 ], RAX
-				MOV				RAX, Q_PTR [ RDX ] [ 5 * 8 ]
-				AND				RAX, Q_PTR [ R8 ] [ 5 * 8 ]
-				MOV				Q_PTR [ RCX ] [ 5 * 8 ], RAX			
-				MOV				RAX, Q_PTR [ RDX ] [ 6 * 8 ]
-				AND				RAX, Q_PTR [ R8 ] [ 6 * 8 ]
-				MOV				Q_PTR [ RCX ] [ 6 * 8 ], RAX
-				MOV				RAX, Q_PTR [ RDX ] [ 7 * 8 ]
-				AND				RAX, Q_PTR [ R8 ] [ 7 * 8 ]
-				MOV				Q_PTR [ RCX ] [ 7 * 8 ], RAX
+				FOR				idx, < 0, 1, 2, 3, 4, 5, 6, 7 >
+				MOV				RAX, Q_PTR [ RDX ] [ idx * 8 ]
+				AND				RAX, Q_PTR [ R8 ] [ idx * 8 ]
+				MOV				Q_PTR [ RCX ] [ idx * 8 ], RAX
+				ENDM
 
 	ENDIF
-
 				RET		
-and_u			ENDP
+				Leaf_End		and_u, ui512
 
 ;--------------------------------------------------------------------------------------------------------------------------------------------------------------
 ;			or_u		-	logical 'OR' bits in lh_op, rh_op, put result in destination
@@ -667,20 +653,17 @@ and_u			ENDP
 ;			rh_op		-	Address of 64 byte alligned array of 8 64-bit words (QWORDS) 512 bits (in R8)
 ;			returns		-	nothing (0)
 
-or_u			PROC			PUBLIC
-
+				Leaf_Entry		or_u, ui512
 				CheckAlign		RCX
 				CheckAlign		RDX
 				CheckAlign		R8
 
-	IF __UseZ
-	
+	IF __UseZ	
 				VMOVDQA64		ZMM31, ZM_PTR [ RDX ]			
 				VPORQ			ZMM31, ZMM31, ZM_PTR [ R8 ]
 				VMOVDQA64		ZM_PTR [ RCX ], ZMM31
 
 	ELSEIF __UseY
-
 				VMOVDQA64		YMM4, YM_PTR [ RDX + 0 * 8 ]
 				VPORQ			YMM5, YMM4, YM_PTR [ R8 + 0 * 8 ]
 				VMOVDQA64		YM_PTR [ RCX + 0 * 8 ], YMM5
@@ -689,7 +672,6 @@ or_u			PROC			PUBLIC
 				VMOVDQA64		YM_PTR [ RCX + 4 * 8 ], YMM3
 
 	ELSEIF __UseX
-
 				MOVDQA			XMM4, XM_PTR [ RDX + 0 * 8 ]
 				POR				XMM4, XM_PTR [ R8 + 0 * 8]
 				MOVDQA			XM_PTR [ RCX + 0 * 8 ], XMM4
@@ -704,36 +686,15 @@ or_u			PROC			PUBLIC
 				MOVDQA			XM_PTR [ RCX + 6 * 8 ], XMM5
 
 	ELSE
-
-				MOV				RAX, Q_PTR [ RDX ] [ 0 * 8 ]
-				OR				RAX,  Q_PTR [ R8 ] [ 0 * 8 ]
-				MOV				Q_PTR [ RCX ] [ 0 * 8 ], RAX
-				MOV				RAX,Q_PTR [ RDX ] [ 1 * 8 ]
-				OR				RAX, Q_PTR [ R8 ] [ 1 * 8 ]
-				MOV				Q_PTR [ RCX ] [ 1 * 8 ], RAX
-				MOV				RAX, Q_PTR [ RDX ] [ 2 * 8 ]
-				OR				RAX, Q_PTR [ R8 ] [ 2 * 8 ]
-				MOV				Q_PTR [ RCX ] [ 2 * 8 ], RAX
-				MOV				RAX, Q_PTR [ RDX ] [ 3 * 8 ]
-				OR				RAX, Q_PTR [ R8 ] [ 3 * 8 ]
-				MOV				Q_PTR [ RCX ] [ 3 * 8 ], RAX
-				MOV				RAX, Q_PTR [ RDX ] [ 4 * 8 ]
-				OR				RAX, Q_PTR [ R8 ] [ 4 * 8 ]
-				MOV				Q_PTR [ RCX ] [ 4 * 8 ], RAX
-				MOV				RAX, Q_PTR [ RDX ] [ 5 * 8 ]
-				OR				RAX, Q_PTR [ R8 ] [ 5 * 8 ]
-				MOV				Q_PTR [ RCX ] [ 5 * 8 ], RAX			
-				MOV				RAX, Q_PTR [ RDX ] [ 6 * 8 ]
-				OR				RAX, Q_PTR [ R8 ] [ 6 * 8 ]
-				MOV				Q_PTR [ RCX ] [ 6 * 8 ], RAX
-				MOV				RAX, Q_PTR [ RDX ] [ 7 * 8 ]
-				OR				RAX, Q_PTR [ R8 ] [ 7 * 8 ]
-				MOV				Q_PTR [ RCX ] [ 7 * 8 ], RAX
+				FOR				idx, < 0, 1, 2, 3, 4, 5, 6, 7 >
+				MOV				RAX, Q_PTR [ RDX ] [ idx * 8 ]
+				OR				RAX,  Q_PTR [ R8 ] [ idx * 8 ]
+				MOV				Q_PTR [ RCX ] [ idx * 8 ], RAX
+				ENDM
 
 	ENDIF
-
 				RET 
-or_u			ENDP
+				Leaf_End		or_u, ui512
 
 
 ;--------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -743,19 +704,16 @@ or_u			ENDP
 ;			source		-	Address of 64 byte alligned array of 8 64-bit words (QWORDS) 512 bits (in RDX)
 ;			returns		-	nothing (0)
 
-not_u			PROC			PUBLIC
-
+				Leaf_Entry		not_u, ui512
 				CheckAlign		RCX
 				CheckAlign		RDX
 
-	IF __UseZ
-	
+	IF __UseZ	
 				VMOVDQA64		ZMM31, ZM_PTR [RDX]			
 				VPANDNQ			ZMM31, ZMM31, qOnes			; qOnes (declared in the data section of this module) is 8 QWORDS, binary all ones
 				VMOVDQA64		ZM_PTR [RCX], ZMM31
 
 	ELSEIF __UseY
-
 				VMOVDQA64		YMM4, YM_PTR [ RDX + 0 * 8 ]
 				VPANDNQ			YMM5, YMM4, qOnes
 				VMOVDQA64		YM_PTR [ RCX + 0 * 8 ], YMM5
@@ -764,7 +722,6 @@ not_u			PROC			PUBLIC
 				VMOVDQA64		YM_PTR [ RCX + 4 * 8 ], YMM5
 
 	ELSEIF __UseX
-
 				MOVDQA			XMM4, XM_PTR [ RDX + 0 * 8 ]
 				PANDN			XMM4, XM_PTR qOnes
 				MOVDQA			XM_PTR [ RCX + 0 * 8 ], XMM4
@@ -779,35 +736,15 @@ not_u			PROC			PUBLIC
 				MOVDQA			XM_PTR [ RCX + 6 * 8 ], XMM4
 
 	ELSE
+				FOR				idx, < 0, 1, 2, 3, 4, 5, 6, 7 >
+				MOV				RAX, Q_PTR [ RDX ] [ idx * 8 ]
+				NOT				RAX
+				MOV				Q_PTR [ RCX ] [ idx * 8 ], RAX
+				ENDM
 
-				MOV				RAX, Q_PTR [ RDX ] [ 0 * 8 ]
-				NOT				RAX
-				MOV				Q_PTR [ RCX ] [ 0 * 8 ], RAX
-				MOV				RAX, Q_PTR [ RDX ] [ 1 * 8 ]
-				NOT				RAX
-				MOV				Q_PTR [ RCX ] [ 1 * 8 ], RAX
-				MOV				RAX, Q_PTR [ RDX ] [ 2 * 8 ]
-				NOT				RAX
-				MOV				Q_PTR [ RCX ] [ 2 * 8 ], RAX
-				MOV				RAX, Q_PTR [ RDX ] [ 3 * 8 ]
-				NOT				RAX
-				MOV				Q_PTR [ RCX ] [ 3 * 8 ], RAX
-				MOV				RAX, Q_PTR [ RDX ] [ 4 * 8 ]
-				NOT				RAX
-				MOV				Q_PTR [ RCX ] [ 4 * 8 ], RAX
-				MOV				RAX, Q_PTR [ RDX ] [ 5 * 8 ]
-				NOT				RAX
-				MOV				Q_PTR [ RCX ] [ 5 * 8 ], RAX			
-				MOV				RAX, Q_PTR [ RDX ] [ 6 * 8 ]
-				NOT				RAX
-				MOV				Q_PTR [ RCX ] [ 6 * 8 ], RAX
-				MOV				RAX, Q_PTR [ RDX ] [ 7 * 8 ]
-				NOT				RAX
-				MOV				Q_PTR [ RCX ] [ 7 * 8 ], RAX
 	ENDIF
 				RET	
-not_u			ENDP
-
+				Leaf_End		not_u, ui512
 
 ;--------------------------------------------------------------------------------------------------------------------------------------------------------------
 ;			msb_u		-	find most significant bit in supplied source 512bit (8 QWORDS)
@@ -816,18 +753,18 @@ not_u			ENDP
 ;			returns		-	-1 if no most significant bit, bit number otherwise, bits numbered 0 to 511 inclusive
 ;			Note:	a returned zero means the significant bit is bit0 of the eighth word of the 512bit source parameter; (the right most bit)
 ;					a returned 511 means bit63 of the first word (the left most bit)
-
-msb_u			PROC			PUBLIC
-				
+				Leaf_Entry		msb_u, ui512
 				CheckAlign		RCX
 
 	IF __UseZ
-
 				VMOVDQA64		ZMM31, ZM_PTR [RCX]			; Load source 
 				VPTESTMQ		K1, ZMM31, ZMM31			; find non-zero words (if any)
 				KMOVB			EAX, K1
 				CMP				EAX, 0						; exit with -1 if all eight qwords are zero (no significant bit)
-				JE				@@zero
+				JNE				@F
+				MOV				EAX, ret_1
+				RET
+@@:
 				BSF				ECX, EAX					; determine index of word from first non-zero bit in mask
 				MOV				RAX, 7
 				SUB				RAX, RCX					; convert index to offset
@@ -837,20 +774,15 @@ msb_u			PROC			PUBLIC
 				BSR				RCX, RCX					; get the index of the non-zero bit within the word
 				ADD				RAX, RCX					; Word index * 64 + bit index becomes bit index to first non-zero bit (0 to 511, where )
 				RET
-@@zero:
-				MOV				EAX, ret_1
-				RET
-	ELSE
 
-				PUSH			R10
-				PUSH			R11
+	ELSE
 				MOV				R10, -1						; Initialize loop counter (and index)
 @@NextWord:
 				INC				R10D
 				CMP				R10D, 8
 				JNZ				@F							; Loop through values 0 to 7, then exit
 				MOV				EAX, ret_1
-				JMP				@@Finished
+				RET
 @@:
 				BSR				RAX, Q_PTR [ RCX ] [ R10 * 8 ]	; Reverse Scan indexed word for significant bit
 				JZ				@@NextWord					; None found, loop to next word
@@ -858,12 +790,11 @@ msb_u			PROC			PUBLIC
 				SUB				R11D, R10D					; calculate seven minus the word index (which word has the msb?)
 				SHL				R11D, 6						; times 64 for each word
 				ADD				EAX, R11D					; plus the BSR found bit position within the word yields the bit position within the 512 bit source
-@@Finished:
-				POP				R11
-				POP				R10
 				RET	
+
 	ENDIF
-msb_u			ENDP
+
+				Leaf_End		msb_u, ui512
 
 ;--------------------------------------------------------------------------------------------------------------------------------------------------------------
 ;			lsb_u		-	find least significant bit in supplied source 512bit (8 QWORDS)
@@ -873,17 +804,18 @@ msb_u			ENDP
 ;			Note:	a returned zero means the significant bit is bit0 of the eighth word of the 512bit source parameter; (the right most bit)
 ;					a returned 511 means bit63 of the first word (the left most bit)
 
-lsb_u			PROC			PUBLIC
-				
+				Leaf_Entry		lsb_u, ui512				
 				CheckAlign		RCX
 
 	IF __UseZ
-				Push			R9
 				VMOVDQA64		ZMM31, ZM_PTR [ RCX ]		; Load source 
 				VPTESTMQ		K1, ZMM31, ZMM31			; find non-zero words (if any)
 				KMOVB			EAX, K1
 				CMP				EAX, 0						; exit with -1 if all eight qwords are zero (no significant bit)
-				JE				@@zero
+				JNE				@F
+				MOV				EAX, ret_1
+				RET
+@@:
 				BSR				ECX, EAX					; determine index of word from last non-zero bit in mask
 				MOV				RAX, 7
 				SUB				RAX, RCX					; convert index to offset
@@ -896,23 +828,16 @@ lsb_u			PROC			PUBLIC
 				VMOVQ			RCX, XMM0					; extract the non-zero word
 				BSR				RCX, RCX					; get the index of the non-zero bit within the word
 				ADD				RAX, RCX					; Word index * 64 + bit index becomes bit index to first non-zero bit (0 to 511, where )
-				JMP				@ret
-@@zero:
-				MOV				EAX, ret_1
-@ret:
-				POP				R9
 				RET
-	ELSE
 
-				PUSH			R10
-				PUSH			R11
+	ELSE
 				MOV				R10, 8						; Initialize loop counter (and index)
 @@NextWord:
 				DEC				R10D
 				CMP				R10D, -1
 				JNE				@F							; Loop through values 7 to 0, then exit
 				MOV				EAX, ret_1
-				JMP				@@Finished
+				RET
 @@:
 				BSF				RAX, Q_PTR [ RCX ] [ R10 * 8 ]		; Scan indexed word for significant bit
 				JZ				@@NextWord					; None found, loop to next word
@@ -920,12 +845,10 @@ lsb_u			PROC			PUBLIC
 				SUB				R11D, R10D					; calculate seven minus the word index (which word has the msb?)
 				SHL				R11D, 6						; times 64 for each word
 				ADD				EAX, R11D					; plus the BSF found bit position within the word yields the bit position within the 512 bit source
-@@Finished:
-				POP				R11
-				POP				R10
 				RET
+
 	ENDIF
-lsb_u			ENDP
+				Leaf_End		lsb_u, ui512
 
 
 

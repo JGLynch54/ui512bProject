@@ -1,3 +1,4 @@
+
 .NOLIST
 ;
 ;			ui512aMacros
@@ -15,7 +16,7 @@
 ;               ui512md provides multiply and divide.
 ;
 ;				It is written in assembly language, using the MASM (ml64) assembler provided as an option within Visual Studio.
-;				(currently using VS Community 2022 17.9.6)
+;				(currently using VS Community 2022 17.14.10)
 ;
 ;				It provides external signatures that allow linkage to C and C++ programs,
 ;				where a shell/wrapper could encapsulate the methods as part of an object.
@@ -29,7 +30,7 @@
 ;				This module is very light-weight (less than 2K bytes) and relatively fast,
 ;				but is not intended for all processor types or all environments. 
 ;
-;				Use for private (hobbyist), or instructional, or as an example for more ambitious projects is all it is meant to be.
+;				Use for private (hobbyist), or instructional, or as an example for more ambitious projects.
 ;
 ;--------------------------------------------------------------------------------------------------------------------------------------------------------------
 ;
@@ -104,12 +105,23 @@ EXTERNDEF		sub_u:PROC
 ;	// returns: zero for no borrow, 1 for borrow (underflow)
 EXTERNDEF		sub_uT64:PROC
 
+;
+;--------------------------------------------------------------------------------------------------------------------------------------------------------------
+;			EXTERNDEF		reg_verify:PROC	;	void reg_verify ( u64* regstruct)
+;			reg_verify		-	copy non-volitile regs into callers struct of nine qwords) intended for uit tests to verify non-volitile regs are not changed
+;			Prototype:		-	void reg_verify( uu64* regstruct);
+;			regstruct		-	Address of 9 QWORDS in a struct where regs will be copied (in RCX)
+; //			reg_verify		-	save non-volatile regs for verification (debug)
+; //			Prototype		-	void reg_verify ( u64* reg struct)
+EXTERNDEF		reg_verify:PROC	;	void reg_verify ( u64* reg struct)
+
 ;			Configuration choices
 __UseZ			EQU				1									; Use AVX4 processor features (512 bit registers and instructions)
 __UseY			EQU				0									; Use AVX2 processor features (256 bit registers and instructions)
 __UseX			EQU				0									; Use SIMD/SSE processor features (128 bit registers and instructions)
 __UseQ			EQU				0									; Do not use extensions, use standard x64 bit registers and instructions
 ;
+__VerifyRegs	EQU				1									; in debug mode, or with unit tests, define routine to verofy non-volitile regs 
 __CheckAlign	EQU				0									; User is expected to pass arguments aligned on 64 byte boundaries, 
 																	; This setting enforces that with a check. It should not be necessary, but included to help debugging
 
@@ -168,6 +180,98 @@ kMask			RECORD			b8:1, b7:1, b6:1, b5:1, b4:1, b3:1, b2:1, b1:1, b0:1
 ;
 ;===========================================================================================
 
+;===========================================================================================
+; Selected macros from "macamd64.inc" (c) Microsoft Corporation
+;	These macros generate .xdata and .pdata entries in the executable image file.
+;	The entries assist in exception and debugging; helping 'unwind' operations.
+;	Only a few macros are included, and are reformatted to match coding style:
+;	indents and captitaliztion.
+;===========================================================================================
+
+;++
+;
+; END_PROLOGUE
+;
+; Macro Description:
+;
+;   This macro marks the end of the prologue.  This must appear after all
+;   of the prologue directives in a nested function.
+;
+; Arguments:
+;
+;   None.
+;
+;--
+
+End_Prolog		MACRO
+				.ENDPROLOG
+				 ENDM
+
+;++
+;
+; LEAF_ENTRY <Name>, <Section>, <NoPad>
+;
+; Macro Description:
+;
+;   This macro indicates the beginning of a leaf function.
+;
+;   A leaf function is one that DOES NOT:
+;
+;   - manipulate non-volatile registers
+;   - manipulate the stack pointer
+;   - call other functions
+;   - reference an exception handler
+;   - contain a prologue
+;   - have any unwind data associated with it
+;
+; Arguments:
+;
+;   Name - Supplies the name of the function
+;
+;   Section - Supplies the name of the section within which the function
+;             is to appear
+;
+;   NoPad - If present, indicates that the function should not be prefixed
+;           with 6 bytes of padding.  This is for internal use only - the
+;           calling standard dictates that functions (nested and leaf) must
+;           be prefixed with padding.
+;
+;--
+
+Leaf_Entry		MACRO			Name, Section
+Section			SEGMENT			PARA 'CODE'
+				DB				6 DUP (0cch)
+				ALIGN			16
+				PUBLIC			Name
+Name			PROC			FRAME
+				End_Prolog
+				ENDM
+
+;++
+;
+; LEAF_END <Name>, <Section>
+;
+; Macro Description:
+;
+;   This macro indicates the end of a leaf function.  It must be paired
+;   with a LEAF_ENTRY macro that includes matching Name and Section
+;   parameters.
+;
+; Arguments:
+;
+;   Name - Supplies the name of the function.  Must match that supplied to
+;          the corresponding LEAF_ENTRY macro.
+;
+;   Section - Supplies the name of the section within which the function
+;             is to appear.  Must match that supplied to the corresponding
+;             LEAF_ENTRY macro.
+;
+;--
+
+Leaf_End		MACRO			Name, Section
+Name			ENDP
+Section			ENDS
+				ENDM
 
 ;===========================================================================================
 ;          Local macros
@@ -182,12 +286,32 @@ CheckAlign		MACRO			Raddr
 	IF	__CheckAlign
 				TEST			Raddr, 63							; Is specified param aligned 64?
 				JZ				ok									; Yes, passes test, continue
-				INT				0									; No? fails, break (can substitute other exception handling)
+				INT				13									; No? fails, break (can substitute other exception handling)
 ok:
 	ENDIF
 				ENDM
+				
+IF	__VerifyRegs
+
+VerifyRegs		MACRO
+				Leaf_Entry		reg_verify, ui512
+				MOV				Q_PTR [ RCX ] [ 0 * 8 ], R12
+				MOV				Q_PTR [ RCX ] [ 1 * 8 ], R13
+				MOV				Q_PTR [ RCX ] [ 2 * 8 ], R14
+				MOV				Q_PTR [ RCX ] [ 3 * 8 ], R15
+				MOV				Q_PTR [ RCX ] [ 4 * 8 ], RDI
+				MOV				Q_PTR [ RCX ] [ 5 * 8 ], RSI
+				MOV				Q_PTR [ RCX ] [ 6 * 8 ], RBX
+				MOV				Q_PTR [ RCX ] [ 7 * 8 ], RBP
+				MOV				Q_PTR [ RCX ] [ 8 * 8 ], RSP
+				RET
+				Leaf_End		reg_verify, ui512
+				ENDM
+ENDIF
 
 MemConstants	MACRO
+
+qOnes			QWORD           8 DUP (0ffffffffffffffffh)
 ;
 zeroQ			DQ				0
 mskHex100		DD				0100h
@@ -205,8 +329,7 @@ mskB4			DB				16
 mskB5			DB				32
 mskB6			DB				64
 mskB7			DB				128
-;
-				ALIGN			8									; realign
+
 				ENDM
 
 ;

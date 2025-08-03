@@ -16,7 +16,7 @@
 ;               ui512md provides multiply and divide.
 ;
 ;				It is written in assembly language, using the MASM (ml64) assembler provided as an option within Visual Studio.
-;				(currently using VS Community 2022 17.9.6)
+;				(currently using VS Community 2022 17.14.10)
 ;
 ;				It provides external signatures that allow linkage to C and C++ programs,
 ;				where a shell/wrapper could encapsulate the methods as part of an object.
@@ -30,7 +30,7 @@
 ;				This module is very light-weight (less than 2K bytes) and relatively fast,
 ;				but is not intended for all processor types or all environments. 
 ;
-;				Use for private (hobbyist), or instructional, or as an example for more ambitious projects is all it is meant to be.
+;				Use for private (hobbyist), or instructional, or as an example for more ambitious projects.
 ;
 ;--------------------------------------------------------------------------------------------------------------------------------------------------------------
 ;

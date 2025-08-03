@@ -58,6 +58,10 @@ extern "C"
 	//			a returned 511 means bit63 of the first word(the left most bit)
 	// EXTERNDEF	lsb_u : PROC
 
+	// void reg_verify(uu64 * regstruct);
+	// reg_verify - copy non - volatile regs into callers struct of nine qwords) intended for uit tests to verify non - volatile regs are not changed
+	void reg_verify(u64*);
+
 };
 
 #endif
