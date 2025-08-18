@@ -32,6 +32,9 @@
     <ClInclude Include="ui512b.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="ui512a.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="ReadMe.md" />

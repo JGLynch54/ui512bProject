@@ -170,6 +170,7 @@
   <ItemGroup>
     <ClInclude Include="CommonTypeDefs.h" />
     <ClInclude Include="pch.h" />
+    <ClInclude Include="ui512a.h" />
     <ClInclude Include="ui512b.h" />
   </ItemGroup>
   <ItemGroup>

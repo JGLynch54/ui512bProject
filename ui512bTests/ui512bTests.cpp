@@ -41,6 +41,7 @@
 
 #include <format>
 
+#include "ui512a.h"
 #include "ui512b.h"
 
 using namespace std;
@@ -61,11 +62,12 @@ namespace ui512bTests
 		/// uses linear congruential method 
 		/// ref: Knuth, Art Of Computer Programming, Vol. 2, Seminumerical Algorithms, 3rd Ed. Sec 3.2.1
 		/// </summary>
+		/// Note: I use this rather than built-in random functions because it produces repeatable results. Handy for debugging.
 		/// <param name="seed">if zero, will supply with: 4294967291</param>
-		/// <returns>Pseudo-random number from zero to ~2^63 (9223372036854775807)</returns>
+		/// <returns>Pseudo-random number from zero to ~2^64 (18446744073709551557)</returns>
 		u64 RandomU64(u64* seed)
 		{
-			const u64 m = 9223372036854775807ull;			// 2^63 - 1, a Mersenne prime
+			const u64 m = 18446744073709551557ull;			// greatest prime below 2^64
 			const u64 a = 68719476721ull;					// closest prime below 2^36
 			const u64 c = 268435399ull;						// closest prime below 2^28
 			// suggested seed: around 2^32, 4294967291
@@ -80,13 +82,13 @@ namespace ui512bTests
 			const u32 dec = 10;
 			u32 dist[dec]{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 
-			const u64 split = 9223372036854775807ull / dec;
+			const u64 split = 18446744073709551557ull / dec;
 			u32 distc = 0;
 			float varsum = 0.0;
 			float deviation = 0.0;
 			float D = 0.0;
 			float sumD = 0.0;
-			float varience = 0.0;
+			float variance = 0.0;
 			const u32 randomcount = 1000000;
 			const s32 norm = randomcount / dec;
 			for (u32 i = 0; i < randomcount; i++)
@@ -108,10 +110,10 @@ namespace ui512bTests
 				deviation = float(abs(long(norm) - long(dist[i])));
 				D = (deviation * deviation) / float(long(norm));
 				sumD += D;
-				varience = float(deviation) / float(norm) * 100.0f;
-				varsum += varience;
+				variance = float(deviation) / float(norm) * 100.0f;
+				varsum += variance;
 				msgd += format("\t{:6d}", dist[i]);
-				msgv += format("\t{:5.3f}% ", varience);
+				msgv += format("\t{:5.3f}% ", variance);
 				msgchi += format("\t{:5.3f}% ", D);
 				distc += dist[i];
 			};
@@ -122,7 +124,7 @@ namespace ui512bTests
 			msgv += format("\t{:6.3f}% ", varsum);
 			msgv += '\n';
 			Logger::WriteMessage(msgv.c_str());
-			msgchi += "\t\tChi distribution: ";
+			msgchi += "\t\tChi-squared distribution: ";
 			msgchi += format("\t{:6.3f}% ", sumD);
 			msgchi += '\n';
 			Logger::WriteMessage(msgchi.c_str());
@@ -171,7 +173,7 @@ namespace ui512bTests
 			{
 				Assert::AreEqual(0x00000000000000FFull, num1[j]);
 			};
-			string runmsg4 = "Shift right function testing. Shift ff into next word. Destiination same as source\n";
+			string runmsg4 = "Shift right function testing. Shift ff into next word. Destination same as source\n";
 			Logger::WriteMessage(runmsg4.c_str());
 			Logger::WriteMessage(L"Passed. Tested expected values via assert.\n");
 			// shift into next word. Note: start at word 2 as first word now zero
@@ -187,10 +189,9 @@ namespace ui512bTests
 			alignas (64) u64 num3[8]{ 0x8000000000000000ull, 0, 0, 0, 0, 0, 0, 0 };
 			alignas (64) u64 wlk1[8]{ 0x8000000000000000ull, 0, 0, 0, 0, 0, 0, 0 };
 			alignas (64) u64 wlk2[8]{ 0, 0, 0, 0, 0, 0, 0, 0 };
-			u16 shiftwalkcount = 1;
-			for (int i = 0; i < 512; i++)
+			shr_u(wlk2, num3, 0); // essentially a copy: wlk2 now equal to num3
+			for (int i = 1; i < 512; i++)
 			{
-				shr_u(wlk2, num3, i);
 				for (int j = 7; j >= 0; j--)
 				{
 					if (wlk1[j] != wlk2[j])
@@ -206,16 +207,13 @@ namespace ui512bTests
 					};
 					Assert::AreEqual(wlk1[j], wlk2[j]);
 				};
-
-				if (i != 511)
-				{
-					shr_u(wlk1, wlk1, shiftwalkcount);
-				};
+				shr_u(wlk1, num3, i);	// shift from original source 'n' bits
+				shr_u(wlk2, wlk2, 1);	// shift from last shift one more bit (should be equal)
 			};
 
-			Assert::AreEqual(1ull, wlk2[7]);
-			Assert::AreEqual(1ull, wlk1[7]);
-			string runmsg5 = "Shift right function testing.Walk a bit from msb to lsb. Verify values each step\n";
+			Assert::AreEqual(1ull, wlk2[7]);		// end of bit by bit walk, should be one
+			Assert::AreEqual(1ull, wlk1[7]);		// end of a 511 shift, should be one
+			string runmsg5 = "Shift right function testing. Walk a bit from msb to lsb. Verify values each step\n";
 			Logger::WriteMessage(runmsg5.c_str());
 			Logger::WriteMessage(L"Passed. Tested expected values via assert.\n");
 
@@ -323,7 +321,7 @@ namespace ui512bTests
 				Assert::AreEqual(num1[j], 0xFF00000000000000ull);
 			};
 
-			// walk a bit from most least significant to most
+			// walk a bit from least significant to most
 			alignas (64) u64 num3[8]{ 0, 0, 0, 0, 0, 0, 0, 1 };
 			alignas (64) u64 wlk1[8]{ 0, 0, 0, 0, 0, 0, 0, 1 };
 			alignas (64) u64 wlk2[8]{ 0, 0, 0, 0, 0, 0, 0, 0 };
@@ -411,6 +409,7 @@ namespace ui512bTests
 			string runmsg = "shl_u function register validation. Ran " + to_string(regvercount) + " times.\n";
 			Logger::WriteMessage(runmsg.c_str());
 		};
+
 		TEST_METHOD(ui512bits_03_and)
 		{
 			u64 seed = 0;
@@ -427,9 +426,9 @@ namespace ui512bTests
 				};
 
 				and_u(result, num1, num2);
-				for (int i = 0; i < 8; i++)
+				for (int j = 0; j < 8; j++)
 				{
-					Assert::AreEqual(0x0ull, result[i]);
+					Assert::AreEqual(0x0ull, result[j]);
 				};
 			};
 
@@ -485,9 +484,10 @@ namespace ui512bTests
 				Assert::IsTrue(r_before.AreEqual(&r_after), L"Register validation failed");
 			};
 
-			string runmsg = "not_u function register validation. Ran " + to_string(regvercount) + " times.\n";
+			string runmsg = "and_u function register validation. Ran " + to_string(regvercount) + " times.\n";
 			Logger::WriteMessage(runmsg.c_str());
 		};
+
 		TEST_METHOD(ui512bits_04_or)
 		{
 			u64 seed = 0;
@@ -504,9 +504,9 @@ namespace ui512bTests
 				};
 
 				or_u(result, num1, num2);
-				for (int i = 0; i < 8; i++)
+				for (int j = 0; j < 8; j++)
 				{
-					Assert::AreEqual(0xFFFFFFFFFFFFFFFFull, result[i]);
+					Assert::AreEqual(0xFFFFFFFFFFFFFFFFull, result[j]);
 				};
 			};
 			string runmsg = "'OR' function testing. Ran tests " + to_string(runcount) + " times, each with pseudo random values.\n";
@@ -550,8 +550,8 @@ namespace ui512bTests
 				for (int j = 0; j < 8; j++)
 				{
 					num1[j] = RandomU64(&seed);
+					num2[j] = RandomU64(&seed);
 				};
-				u64 val = RandomU64(&seed);
 				r_before.Clear();
 				reg_verify((u64*)&r_before);
 				or_u(num2, num2, num1);
@@ -561,6 +561,82 @@ namespace ui512bTests
 			};
 
 			string runmsg = "or_u function register validation. Ran " + to_string(regvercount) + " times.\n";
+			Logger::WriteMessage(runmsg.c_str());
+		};
+
+
+		TEST_METHOD(ui512bits_04_xor)
+		{
+			u64 seed = 0;
+			alignas (64) u64 num1[8]{ 0, 0, 0, 0, 0, 0, 0, 0 };
+			alignas (64) u64 num2[8]{ 0, 0, 0, 0, 0, 0, 0, 0 };
+			alignas (64) u64 result[8]{ 0, 0, 0, 0, 0, 0, 0, 0 };
+			for (int i = 0; i < runcount; i++)
+			{
+				for (int j = 0; j < 8; j++)
+				{
+					num1[j] = num2[j] = RandomU64(&seed);
+					result[j] = 0;
+				};
+
+				xor_u(result, num1, num2);
+				for (int j = 0; j < 8; j++)
+				{
+					Assert::AreEqual(0x0ull, result[j]);
+				};
+			};
+			string runmsg = "'XOR' function testing. Ran tests " + to_string(runcount) + " times, each with pseudo random values.\n";
+			Logger::WriteMessage(runmsg.c_str());
+			Logger::WriteMessage(L"Passed. Tested expected values via assert.\n");
+		};
+
+		TEST_METHOD(ui512bits_04_xor_timing)
+		{
+			u64 seed = 0;
+			alignas (64) u64 num1[8]{ 0, 0, 0, 0, 0, 0, 0, 0 };
+			alignas (64) u64 num2[8]{ 0, 0, 0, 0, 0, 0, 0, 0 };
+			alignas (64) u64 result[8]{ 0, 0, 0, 0, 0, 0, 0, 0 };
+
+			for (int j = 0; j < 8; j++)
+			{
+				num1[j] = RandomU64(&seed);
+				num2[j] = RandomU64(&seed);
+			};
+
+			for (int i = 0; i < timingcount; i++)
+			{
+				xor_u(result, num2, num1);
+			};
+
+			string runmsg = "'XOR' function timing. Ran " + to_string(timingcount) + " times.\n";
+			Logger::WriteMessage(runmsg.c_str());
+		};
+
+		TEST_METHOD(ui512bits_04_XOR_reg)
+		{
+			// xor_u function register verification.
+			//	Check register before call, verify non-volatile register remain unchanged after call.
+			regs r_before{};
+			regs r_after{};
+			u64 seed = 0;
+			alignas (64) u64 num1[8]{};
+			alignas (64) u64 num2[8]{};
+			for (int i = 0; i < regvercount; i++)
+			{
+				for (int j = 0; j < 8; j++)
+				{
+					num1[j] = RandomU64(&seed);
+					num2[j] = RandomU64(&seed);
+				};
+				r_before.Clear();
+				reg_verify((u64*)&r_before);
+				xor_u(num2, num2, num1);
+				r_after.Clear();
+				reg_verify((u64*)&r_after);
+				Assert::IsTrue(r_before.AreEqual(&r_after), L"Register validation failed");
+			};
+
+			string runmsg = "xor_u function register validation. Ran " + to_string(regvercount) + " times.\n";
 			Logger::WriteMessage(runmsg.c_str());
 		};
 		TEST_METHOD(ui512bits_05_not)
@@ -580,9 +656,9 @@ namespace ui512bTests
 				};
 
 				not_u(result, num1);
-				for (int i = 0; i < 8; i++)
+				for (int j = 0; j < 8; j++)
 				{
-					Assert::AreEqual(num2[i], result[i]);
+					Assert::AreEqual(num2[j], result[j]);
 				};
 			};
 			string runmsg = "'NOT' function testing. Ran tests " + to_string(runcount) + " times, each with pseudo random values.\n";
@@ -596,7 +672,7 @@ namespace ui512bTests
 			alignas (64) u64 num1[8]{ 0, 0, 0, 0, 0, 0, 0, 0 };
 			for (int j = 0; j < 8; j++)
 			{
-				num1[j] = RandomU64(&seed);;
+				num1[j] = RandomU64(&seed);
 			};
 
 			for (int i = 0; i < timingcount; i++)
@@ -623,8 +699,8 @@ namespace ui512bTests
 				for (int j = 0; j < 8; j++)
 				{
 					num1[j] = RandomU64(&seed);
+					num2[j] = RandomU64(&seed);
 				};
-				u64 val = RandomU64(&seed);
 				r_before.Clear();
 				reg_verify((u64*)&r_before);
 				not_u(num2, num1);
@@ -636,6 +712,7 @@ namespace ui512bTests
 			string runmsg = "not_u function register validation. Ran " + to_string(regvercount) + " times.\n";
 			Logger::WriteMessage(runmsg.c_str());
 		};
+
 		TEST_METHOD(ui512bits_06_msb)
 		{
 			u64 seed = 0;
@@ -649,7 +726,7 @@ namespace ui512bTests
 			alignas (64) u64 lowbit[8]{ 0, 0, 0, 0, 0, 0, 0, 1 };
 			alignas (64) u64 b2bit[8]{ 0, 0, 0, 0, 0, 0, 0, 2 };
 			alignas (64) u64 nobit[8]{ 0, 0, 0, 0, 0, 0, 0, 0 };
-			alignas (64) u64 choosebit[8]{ 0, 1, 0, 0, 0, 0x8000000000000000, 0, 0 };
+			alignas (64) u64 choosebit[8]{ 0, 9, 0, 0, 0, 0x8000000000000000, 0xff, 0 };
 
 			s16 highbitloc = msb_u(highbit);
 			Assert::AreEqual(s16(511), highbitloc);
@@ -664,7 +741,7 @@ namespace ui512bTests
 			Assert::AreEqual(s16(-1), nobitloc);
 
 			s16 choosebitloc = msb_u(choosebit);
-			Assert::AreEqual(s16(384), choosebitloc);
+			Assert::AreEqual(s16(387), choosebitloc);
 
 			for (int i = 0; i < adjruncount; i++)
 			{
@@ -698,7 +775,7 @@ namespace ui512bTests
 
 			for (int j = 0; j < 8; j++)
 			{
-				num1[j] = RandomU64(&seed);;
+				num1[j] = RandomU64(&seed);
 			};
 
 			for (int i = 0; i < timingcount; i++)
@@ -724,7 +801,6 @@ namespace ui512bTests
 				{
 					num1[j] = RandomU64(&seed);
 				};
-				u64 val = RandomU64(&seed);
 				r_before.Clear();
 				reg_verify((u64*)&r_before);
 				s16 result = msb_u(num1);
@@ -798,10 +874,10 @@ namespace ui512bTests
 
 			for (int j = 0; j < 8; j++)
 			{
-				num1[j] = RandomU64(&seed);;
+				num1[j] = RandomU64(&seed);
 			};
 
-			for (int i = 0; i < timingcount; i++)
+			for (int j = 0; j < timingcount; j++)
 			{
 				bitloc = lsb_u(num1);
 			};
@@ -812,7 +888,7 @@ namespace ui512bTests
 
 		TEST_METHOD(ui512bits_07_lsb_reg)
 		{
-			// leb_u function register verification.
+			// lsb_u function register verification.
 			//	Check register before call, verify non-volatile register remain unchanged after call.
 			regs r_before{};
 			regs r_after{};
@@ -824,7 +900,6 @@ namespace ui512bTests
 				{
 					num1[j] = RandomU64(&seed);
 				};
-				u64 val = RandomU64(&seed);
 				r_before.Clear();
 				reg_verify((u64*)&r_before);
 				s16 result = lsb_u(num1);

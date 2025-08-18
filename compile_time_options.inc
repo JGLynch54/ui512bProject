@@ -1,14 +1,13 @@
-IFNDEF			legalnotes
-legalnotes		EQU				1
+IFNDEF		legalnotes
+legalnotes	EQU		1
 .LIST
 ;
-;			ui512bMacros
+;			ui512aMacros
 ;
-;--------------------------------------------------------------------------------------------------------------------------------------------------------------
-;			File:			ui512bMacros.inc
+;			File:			compile_time_options.inc
 ;			Author:			John G. Lynch
 ;			Legal:			Copyright @2024, per MIT License below
-;			Date:			June 11, 2024
+;			Date:			May 13, 2024
 ;
 ;			Notes:
 ;				ui512 is a small project to provide basic operations for a variable type of unsigned 512 bit integer.
@@ -25,8 +24,8 @@ legalnotes		EQU				1
 ;
 ;				It has assembly time options directing the use of Intel processor extensions: AVX4, AVX2, SIMD, or none:
 ;				(Z (512), Y (256), or X (128) registers, or regular Q (64bit)).
-;
-;				Note: The file "compile_time_options.inc" contains the options that can be configured for extension usage, and other options.
+;				
+;				This file contains to options, set them here.
 ;
 ;				If processor extensions are used, the caller must align the variables declared and passed
 ;				on the appropriate byte boundary (e.g. alignas 64 for 512)
@@ -34,10 +33,9 @@ legalnotes		EQU				1
 ;				This module is very light-weight (less than 2K bytes) and relatively fast,
 ;				but is not intended for all processor types or all environments. 
 ;
-;				Use for private (hobbyist), or instructional, or as an example for more ambitious projects.
+;				Use for private (hobbyist), or instructional, or as an example for more ambitious projects is all it is meant to be.
 ;
 ;--------------------------------------------------------------------------------------------------------------------------------------------------------------
-;
 ;
 ;			MIT License
 ;
@@ -61,51 +59,21 @@ legalnotes		EQU				1
 ;				OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 ;				SOFTWARE.
 ;
+ENDIF			; legalnotes
 
-ENDIF			; legal notes	
+IFNDEF							compile_time_options_INC
+compile_time_options_INC		EQU			<1>
 
-IFNDEF			ui512bMacros_INC
-ui512bMacros_INC EQU		<1>
+;			Configuration choices
+__UseZ			EQU				0									; Use AVX4 processor features (512 bit registers and instructions)
+__UseY			EQU				0									; Use AVX2 processor features (256 bit registers and instructions)
+__UseX			EQU				0									; Use SIMD/SSE processor features (128 bit registers and instructions)
+__UseQ			EQU				1									; Do not use extensions, use standard x64 bit registers and instructions
+;
+__UseBMI2		EQU				1									; Bit manipulation instructions (Haswell and later) ref:https://en.wikipedia.org/wiki/X86_Bit_manipulation_instruction_set
+;
+__VerifyRegs	EQU				1									; in debug mode, or with unit tests, define routine to verify non-volatile regs 
+__CheckAlign	EQU				0									; User is expected to pass arguments aligned on 64 byte boundaries, 
+;																	; This setting enforces that with a check. It should not be necessary, but included to help debugging
 
-;           header file equivalent extern declarations
-;			EXTERN "C" signatures (from ui512b.asm)
-
-;   // void shr_u ( u64* destination, u64* source, u16 bits_to_shift )
-;   // shift supplied source 512bit (8 QWORDS) right, put in destination
-EXTERNDEF		shr_u:PROC
-
-;   // void shl_u ( u64* destination, u64* source, u16 bits_to_shift );
-;   // shift supplied source 512bit (8 QWORDS) left, put in destination
-EXTERNDEF		shl_u:PROC
-
-;   // void and_u ( u64* destination, u64* lh_op, u64* rh_op );
-;   // logical 'AND' bits in lh_op, rh_op, put result in destination
-EXTERNDEF		and_u:PROC
-
-;   // logical 'OR' bits in lh_op, rh_op, put result in destination
-;   // void or_u( u64* destination, u64* lh_op, u64* rh_op);
-EXTERNDEF		or_u:PROC
-
-;   // logical 'XOR' bits in lh_op, rh_op, put result in destination
-;   // void xor_u( u64* destination, u64* lh_op, u64* rh_op);
-EXTERNDEF		xor_u:PROC
-
-;   // logical 'NOT' bits in source, put result in destination
-;	// void not_u( u64* destination, u64* source);
-EXTERNDEF		not_u:PROC
-
-;   // find most significant bit in supplied source 512bit (8 QWORDS)
-;	// s16 msb_u( u64* );
-;   // returns: -1 if no most significant bit, bit number otherwise, bits numbered 0 to 511 inclusive
-;	//	Note:	a returned zero means the significant bit is bit0 of the eighth word of the 512bit source parameter; (the right most bit)
-;	//			a returned 511 means bit63 of the first word(the left most bit);	//	a returned 511 means bit63 of the first word
-EXTERNDEF		msb_u:PROC
-
-;   // find least significant bit in supplied source 512bit (8 QWORDS)
-;	// s16 lsb_u( u64* );
-;   // returns: -1 if no least significant bit, bit number otherwise, bits numbered 0 to 511 inclusive
-;	//	Note:	a returned zero means the significant bit is bit0 of the eighth word of the 512bit source parameter; (the right most bit)
-;	//			a returned 511 means bit63 of the first word(the left most bit);	//	a returned 511 means bit63 of the first word
-EXTERNDEF		lsb_u:PROC
-
-ENDIF			; ui512bMacros_INC
+ENDIF			; compile_time_options_INC

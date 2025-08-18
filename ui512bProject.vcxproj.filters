@@ -25,6 +25,9 @@
     <None Include="ui512aMacros.inc">
       <Filter>Header Files</Filter>
     </None>
+    <None Include="compile_time_options.inc">
+      <Filter>Header Files</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <MASM Include="ui512b.asm">

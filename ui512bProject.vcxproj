@@ -108,6 +108,8 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <LanguageStandard_C>stdc17</LanguageStandard_C>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -120,6 +122,12 @@
     <MASM>
       <AssembledCodeListingFile>$(SolutionDir)%(FileName).cod</AssembledCodeListingFile>
     </MASM>
+    <ProjectReference>
+      <LinkLibraryDependencies>true</LinkLibraryDependencies>
+    </ProjectReference>
+    <Lib>
+      <AdditionalDependencies>"C:\Users\John Lynch\OneDrive\My Projects\source\repos\ui512aProject\ui512aProject.lib";%(AdditionalDependencies)</AdditionalDependencies>
+    </Lib>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
@@ -142,6 +150,7 @@
   </ItemGroup>
   <ItemGroup>
     <MASM Include="ui512b.asm" />
+    <None Include="compile_time_options.inc" />
     <None Include="ReadMe.md" />
     <None Include="ui512aMacros.inc" />
     <None Include="ui512bMacros.inc" />
