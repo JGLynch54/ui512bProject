@@ -722,26 +722,62 @@ namespace ui512bTests
 
 			alignas (64) u64 num1[8]{ 0, 0, 0, 0, 0, 0, 0, 0 };
 
-			alignas (64) u64 highbit[8]{ 0x8000000000000000, 0, 0, 0, 0, 0, 0, 0 };
+			alignas (64) u64 nobit[8]{ 0, 0, 0, 0, 0, 0, 0, 0 };
 			alignas (64) u64 lowbit[8]{ 0, 0, 0, 0, 0, 0, 0, 1 };
 			alignas (64) u64 b2bit[8]{ 0, 0, 0, 0, 0, 0, 0, 2 };
-			alignas (64) u64 nobit[8]{ 0, 0, 0, 0, 0, 0, 0, 0 };
+			alignas (64) u64 highbit[8]{ 0x8000000000000000, 0, 0, 0, 0, 0, 0, 0 };
+			alignas (64) u64 twobitsdiffwords[8]{ 0, 1, 0, 0, 0, 0, 0, 1 };
+			alignas (64) u64 b2bitsw[8]{ 0, 0, 0, 0, 0, 0, 0, 17 };
 			alignas (64) u64 choosebit[8]{ 0, 9, 0, 0, 0, 0x8000000000000000, 0xff, 0 };
-
-			s16 highbitloc = msb_u(highbit);
-			Assert::AreEqual(s16(511), highbitloc);
-
-			s16 lowbitloc = msb_u(lowbit);
-			Assert::AreEqual(s16(0), lowbitloc);
-
-			s16 b2bitloc = msb_u(b2bit);
-			Assert::AreEqual(s16(1), b2bitloc);
 
 			s16 nobitloc = msb_u(nobit);
 			Assert::AreEqual(s16(-1), nobitloc);
+			{
+				string runmsg = "Most significant bit function testing. Find 'no bit'. Location returned: " + to_string(nobitloc) + ". Assert validated.\n";
+				Logger::WriteMessage(runmsg.c_str());
+			}
+
+			s16 lowbitloc = msb_u(lowbit);
+			Assert::AreEqual(s16(0), lowbitloc);
+			{
+				string runmsg = "Most significant bit function testing. Find 'Low bit'. Location returned: " + to_string(lowbitloc) + ". Assert validated.\n";
+				Logger::WriteMessage(runmsg.c_str());
+			}
+
+			s16 b2bitloc = msb_u(b2bit);
+			Assert::AreEqual(s16(1), b2bitloc);
+			{
+				string runmsg = "Most significant bit function testing. Find 'bit two bit'. Location returned: " + to_string(b2bitloc) + ". Assert validated.\n";
+				Logger::WriteMessage(runmsg.c_str());
+			}
+
+			s16 highbitloc = msb_u(highbit);
+			Assert::AreEqual(s16(511), highbitloc);
+			{
+				string runmsg = "Most significant bit function testing. Find 'High bit'. Location returned: " + to_string(highbitloc) + ". Assert validated.\n";
+				Logger::WriteMessage(runmsg.c_str());
+			}
+
+			s16 twobitbitloc = msb_u(twobitsdiffwords);  // find / select msb bit of the two from different words
+			Assert::AreEqual(s16(384), twobitbitloc);
+			{
+				string runmsg = "Most significant bit function testing. Select msb from two different words. Location returned: " + to_string(twobitbitloc) + ". Assert validated.\n";
+				Logger::WriteMessage(runmsg.c_str());
+			}
+
+			s16 b2bitswloc = msb_u(b2bitsw);	// find / select msb bit of the two from the same word
+			Assert::AreEqual(s16(4), b2bitswloc);
+			{
+				string runmsg = "Most significant bit function testing.Select msb from two within a word. Location returned: " + to_string(b2bitswloc) + ". Assert validated.\n";
+				Logger::WriteMessage(runmsg.c_str());
+			}
 
 			s16 choosebitloc = msb_u(choosebit);
 			Assert::AreEqual(s16(387), choosebitloc);
+			{
+				string runmsg = "Most significant bit function testing. Choose a bit. Location returned: " + to_string(choosebitloc) + ". Assert validated.\n";
+				Logger::WriteMessage(runmsg.c_str());
+			}
 
 			for (int i = 0; i < adjruncount; i++)
 			{
@@ -762,7 +798,7 @@ namespace ui512bTests
 
 			};
 
-			string runmsg = "Most significant bit function testing. Ran tests " + to_string(runcount) + " times, each with shifted values.\n";
+			string runmsg = "Most significant bit function testing. Ran tests " + to_string(runcount) + " times, each with shifted values. Every bit location checked.\n";
 			Logger::WriteMessage(runmsg.c_str());
 			Logger::WriteMessage(L"Passed. Tested expected values via assert.\n");
 		};
@@ -821,26 +857,62 @@ namespace ui512bTests
 			alignas (64) u64 num1[8]{ 0, 0, 0, 0, 0, 0, 0, 0 };
 			int adjruncount = runcount / 64;
 
-			alignas (64) u64 highbit[8]{ 0x8000000000000000, 0, 0, 0, 0, 0, 0, 0 };
+			alignas (64) u64 nobit[8]{ 0, 0, 0, 0, 0, 0, 0, 0 };
 			alignas (64) u64 lowbit[8]{ 0, 0, 0, 0, 0, 0, 0, 1 };
 			alignas (64) u64 b2bit[8]{ 0, 0, 0, 0, 0, 0, 0, 2 };
-			alignas (64) u64 nobit[8]{ 0, 0, 0, 0, 0, 0, 0, 0 };
-			alignas (64) u64 choosebit[8]{ 0, 1, 0, 0, 0, 0x8000000000000000, 0, 0 };
-
-			s16 highbitloc = lsb_u(highbit);
-			Assert::AreEqual(s16(511), highbitloc);
-
-			s16 lowbitloc = lsb_u(lowbit);
-			Assert::AreEqual(s16(0), lowbitloc);
-
-			s16 b2bitloc = lsb_u(b2bit);
-			Assert::AreEqual(s16(1), b2bitloc);
+			alignas (64) u64 highbit[8]{ 0x8000000000000000, 0, 0, 0, 0, 0, 0, 0 };
+			alignas (64) u64 twobitsdiffwords[8]{ 0, 1, 0, 0, 0, 0, 0, 1 };
+			alignas (64) u64 b2bitsw[8]{ 0, 0, 0, 0, 0, 0, 0, 17 };
+			alignas (64) u64 choosebit[8]{ 0, 9, 0, 0, 0, 0x8000000000000000, 0xff, 0 };
 
 			s16 nobitloc = lsb_u(nobit);
 			Assert::AreEqual(s16(-1), nobitloc);
+			{
+				string runmsg = "Least significant bit function testing. Find 'no bit'. Location returned: " + to_string(nobitloc) + ". Assert validated.\n";
+				Logger::WriteMessage(runmsg.c_str());
+			}
+
+			s16 lowbitloc = lsb_u(lowbit);
+			Assert::AreEqual(s16(0), lowbitloc);
+			{
+				string runmsg = "Least significant bit function testing. Find 'Low bit'. Location returned: " + to_string(lowbitloc) + ". Assert validated.\n";
+				Logger::WriteMessage(runmsg.c_str());
+			}
+
+			s16 b2bitloc = lsb_u(b2bit);
+			Assert::AreEqual(s16(1), b2bitloc);
+			{
+				string runmsg = "Least significant bit function testing. Find 'Bit 2 bit'. Location returned: " + to_string(b2bitloc) + ". Assert validated.\n";
+				Logger::WriteMessage(runmsg.c_str());
+			}
+
+			s16 highbitloc = lsb_u(highbit);
+			Assert::AreEqual(s16(511), highbitloc);
+			{
+				string runmsg = "Least significant bit function testing. Find 'High bit'. Location returned: " + to_string(highbitloc) + ". Assert validated.\n";
+				Logger::WriteMessage(runmsg.c_str());
+			}
+
+			s16 twobitbitloc = lsb_u(twobitsdiffwords);  // find / select lsb bit of the two from different words
+			Assert::AreEqual(s16(0), twobitbitloc);
+			{
+				string runmsg = "Least significant bit function testing. Select from two bits in different words. Location returned: " + to_string(twobitbitloc) + ". Assert validated.\n";
+				Logger::WriteMessage(runmsg.c_str());
+			}
+
+			s16 b2bitswloc = lsb_u(b2bitsw);	// find / select lsb bit of the two from the same word
+			Assert::AreEqual(s16(0), b2bitswloc);
+			{
+				string runmsg = "Least significant bit function testing. Select from two bits in same word. Location returned: " + to_string(b2bitswloc) + ". Assert validated.\n";
+				Logger::WriteMessage(runmsg.c_str());
+			}
 
 			s16 choosebitloc = lsb_u(choosebit);
-			Assert::AreEqual(s16(191), choosebitloc);
+			Assert::AreEqual(s16(64), choosebitloc);
+			{
+				string runmsg = "Least significant bit function testing. Find 'Chhose bit'. Location returned: " + to_string(choosebitloc) + ". Assert validated.\n";
+				Logger::WriteMessage(runmsg.c_str());
+			}
 
 			for (int i = 0; i < adjruncount; i++)
 			{
@@ -861,7 +933,7 @@ namespace ui512bTests
 
 			};
 
-			string runmsg = "Least significant bit function testing. Ran tests " + to_string(runcount) + " times, each with shifted values.\n";
+			string runmsg = "Least significant bit function testing. Ran tests " + to_string(runcount) + " times, each with shifted values. Every bit location checked.\n";
 			Logger::WriteMessage(runmsg.c_str());
 			Logger::WriteMessage(L"Passed. Tested expected values via assert.\n");
 		};

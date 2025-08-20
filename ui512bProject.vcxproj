@@ -151,6 +151,7 @@
   <ItemGroup>
     <MASM Include="ui512b.asm" />
     <None Include="compile_time_options.inc" />
+    <None Include="legalnotes.inc" />
     <None Include="ReadMe.md" />
     <None Include="ui512aMacros.inc" />
     <None Include="ui512bMacros.inc" />
