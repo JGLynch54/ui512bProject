@@ -43,15 +43,35 @@ EXTERNDEF		not_u:PROC
 ;   // find most significant bit in supplied source 512bit (8 QWORDS)
 ;	// s16 msb_u( u64* );
 ;   // returns: -1 if no most significant bit, bit number otherwise, bits numbered 0 to 511 inclusive
-;	//	Note:	a returned zero means the significant bit is bit0 of the eighth word of the 512bit source parameter; (the right most bit)
-;	//			a returned 511 means bit63 of the first word(the left most bit);	//	a returned 511 means bit63 of the first word
+;	//	Note:	a returned zero means the significant bit is bit0 of the eighth word of the 512bit source parameter; (the right most bit).
+;	//			a returned 511 means bit63 of the first word; (the left most bit).	
 EXTERNDEF		msb_u:PROC
 
 ;   // find least significant bit in supplied source 512bit (8 QWORDS)
 ;	// s16 lsb_u( u64* );
 ;   // returns: -1 if no least significant bit, bit number otherwise, bits numbered 0 to 511 inclusive
-;	//	Note:	a returned zero means the significant bit is bit0 of the eighth word of the 512bit source parameter; (the right most bit)
-;	//			a returned 511 means bit63 of the first word(the left most bit);	//	a returned 511 means bit63 of the first word
+;	//	Note:	a returned zero means the significant bit is bit0 of the eighth word of the 512bit source parameter; (the right most bit).
+;	//			a returned 511 means bit63 of the first word; (the left most bit).	
 EXTERNDEF		lsb_u:PROC
+
+;==================================================================================================
+
+; Local macros
+
+; Each word is shifted right, and the bits shifted out are ORd into the next (less significant) word.
+; RCX holds the number of bits to shift right, RBX holds the 64 bit complement for left shift.
+ShiftOrR		MACRO			lReg, rReg
+				SHLX			RDX, lReg, RBX					; shift 'bottom' bits to top
+				SHRX			rReg, rReg, RCX					; shift target bits right (leaving zero filled bits at top)
+				OR				rReg, RDX						; OR in new 'top' bits
+				ENDM
+
+; Each word is shifted left, and the bits shifted out are ORd into the next (more significant) word.
+; RCX holds the number of bits to shift left, RBX holds the 64 bit complement for right shift.
+ShiftOrL		MACRO			lReg, rReg
+				SHRX			RDX, lReg, RBX					; shift 'top' bits to bottom
+				SHLX			rReg, rReg, RCX					; shift target bits left (leaving zero filled bits at bottom)
+				OR				rReg, RDX						; OR in new 'bottom' bits
+				ENDM
 
 ENDIF			; ui512bMacros_INC

@@ -14,8 +14,48 @@
 				INCLUDE			ui512bMacros.inc
 				OPTION			casemap:none
 
-ui512D			SEGMENT			'DATA'	ALIGN (64)				; Declare a data segment. Aligned 64.	
-				MemConstants									; Generate memory resident constants
+ui512D			SEGMENT			'RODATA' ALIGN (64)				; Declare a data segment. Read only. Aligned 64.
+
+; Note: all data here is read-only, so can be shared between multiple threads
+	IF __UseZ		; Only need these tables if using zmm regs
+
+; Note: storage of qwords in ZMM regs is in 'reverse' order, with the lowest index holding the most significant qword
+;			so index 0 holds bits 511-448, index 7 holds bits 63-0
+; But when the ZMM reg is stored to memory, the order is 'normal', with the lowest address holding the most significant qword
+
+; table of indices for permuting words in a zmm reg to achieve right shifts by words
+ShiftPermuteRt	QWORD			0, 1, 2, 3, 4, 5, 6, 7			; identity permute for shift left/right by words
+				QWORD			0, 0, 1, 2, 3, 4, 5, 6			; shift right by one word
+				QWORD			0, 0, 0, 1, 2, 3, 4, 5			; shift right by two words
+				QWORD			0, 0, 0, 0, 1, 2, 3, 4			; shift right by three words
+				QWORD			0, 0, 0, 0, 0, 1, 2, 3			; shift right by four words
+				QWORD			0, 0, 0, 0, 0, 0, 1, 2			; shift right by five words
+				QWORD			0, 0, 0, 0, 0, 0, 0, 1			; shift right by six words
+				QWORD			0, 0, 0, 0, 0, 0, 0, 0			; shift right by seven words
+
+; table of indices for permuting words in a zmm reg to achieve left shifts by words
+ShiftPermuteLt	QWORD			0, 1, 2, 3, 4, 5, 6, 7			; identity permute for shift left/right by words
+				QWORD			1, 2, 3, 4, 5, 6, 7, 0			; shift left by one word
+				QWORD			2, 3, 4, 5, 6, 7, 0, 0			; shift left by two words
+				QWORD			3, 4, 5, 6, 7, 0, 0, 0			; shift left by three words
+				QWORD			4, 5, 6, 7, 0, 0, 0, 0			; shift left by four words
+				QWORD			5, 6, 7, 0, 0, 0, 0, 0			; shift left by five words
+				QWORD			6, 7, 0, 0, 0, 0, 0, 0			; shift left by six words
+				QWORD			7, 0, 0, 0, 0, 0, 0, 0			; shift left by seven words	
+	ENDIF
+; Generate memory resident constants (still aligned 64)
+				MemConstants
+	IF __UseZ		; Only need these tables if using zmm regs
+		
+; When shifting, some words become zero,table of masks for zeroing words when shifting right
+ShiftMaskRt		DB				0ffh, 0feh, 0fch, 0f8h, 0f0h, 0e0h, 0c0h, 080h
+
+; When shifting, some words become zero,table of masks for zeroing words when shifting left
+ShiftMaskLt		DB				0ffh, 07fh, 03fh, 01fh, 0fh, 07h, 03h, 01h	
+	ENDIF
+
+; end of memory resident constants
+; end of data segment
 ui512D			ENDS											; end of data segment
 
 
@@ -36,14 +76,12 @@ ui512D			ENDS											; end of data segment
 				JL				@F
 				Zero512			RCX								; zero destination
 				RET
-@@:
-				AND				R8, 511							; ensure no high bits above shift count
+@@:				AND				R8, 511							; ensure no high bits above shift count
 				JNZ				@F								; handle edge case, zero bits to shift
 				CMP				RCX, RDX
 				JE				@@ret							; destination is the same as the source: no copy needed
 				Copy512			RCX, RDX						; no shift, just copy (destination, source already in regs)
-@@ret:
-				RET
+@@ret:			RET
 @@:
 
 	IF	__UseZ
@@ -55,45 +93,21 @@ ui512D			ENDS											; end of data segment
 				VPXORQ			ZMM28, ZMM28, ZMM28				; 
 				VALIGNQ			ZMM30, ZMM31, ZMM28, 7			; shift copy of words left one word (to get low order bits aligned for shift)
 				VPSHRDVQ		ZMM31, ZMM30, ZMM29				; shift, concatenating low bits of next word with each word to shift in
-@@:
 
-; with the bits shifted within the words, if the desired shift is more than 64 bits, word shifts are required
-; verify Nr of word shift is zero to seven, use it as index into jump table; jump to appropriate shift
+; with the bits shifted within the words (if needed), if the desired shift is more than 64 bits, word shifts are required
+@@:				LEA				RAX, ShiftMaskRt	
 				SHR				R8W, 6							; divide Nr bits to shift by 64 giving Nr words to shift (can only be 0-7 based on above validation)
-				LEA				RAX, @jt						; address of jump table
-				JMP				Q_PTR [ RAX ] [ R8 * 8 ]		; jump to routine that shifts the appropriate Nr words
-@jt:
-				QWORD			@@E, @@1, @@2, @@3, @@4, @@5, @@6, @@7
-@@1:			VALIGNQ			ZMM31, ZMM31, ZMM28, 7			; shifts words in ZMM31 right 7, fills with zero, resulting seven plus filled zero to ZMM31
-@@E:			VMOVDQA64		ZM_PTR [ RCX ], ZMM31			; store result at callers destination
-				RET
-
-@@2:			VALIGNQ			ZMM31, ZMM31, ZMM28, 6
+				LEA				RAX,  [ RAX ] [ R8 ]			; Add index to base address of mask table
+				KMOVB			K1, B_PTR [ RAX ]				; create mask for words to be zeroed
+				LEA				RAX, ShiftPermuteRt				; address of permute table
+				SHL				R8W, 6							; multiply by 64 to get offset into permute table		
+				LEA				RAX,  [ RAX ] [ R8 ] 			; Add offset to base address of permute table
+				VMOVDQA64		ZMM29, ZM_PTR [ RAX ]			; load permute indices
+				VPERMQ			ZMM31 {k1}{z}, ZMM29, ZMM31		; permute words in zmm31 to achieve word shift
 				VMOVDQA64		ZM_PTR [ RCX ], ZMM31			; store result at callers destination
 				RET
-
-@@3:			VALIGNQ			ZMM31, ZMM31, ZMM28, 5
-				VMOVDQA64		ZM_PTR [ RCX ], ZMM31			; store result at callers destination
-				RET
-
-@@4:			VALIGNQ			ZMM31, ZMM31, ZMM28, 4
-				VMOVDQA64		ZM_PTR [ RCX ], ZMM31			; store result at callers destination
-				RET
-
-@@5:			VALIGNQ			ZMM31, ZMM31, ZMM28, 3
-				VMOVDQA64		ZM_PTR [ RCX ], ZMM31			; store result at callers destination
-				RET
-
-@@6:			VALIGNQ			ZMM31, ZMM31, ZMM28, 2
-				VMOVDQA64		ZM_PTR [ RCX ], ZMM31			; store result at callers destination
-				RET
-
-@@7:			VALIGNQ			ZMM31, ZMM31, ZMM28, 1
-				VMOVDQA64		ZM_PTR [ RCX ], ZMM31			; store result at callers destination
-				RET	
 
 	ELSE
-
 ; save non-volatile regs to be used as work regs			
 				PUSH			R12								; going to use 8 gp regs for the 8 qword source
 				PUSH			R13								; R9, R10, R11 are considered 'volatile' and dont need to be saved
@@ -120,15 +134,7 @@ ui512D			ENDS											; end of data segment
 				LEA				RBX, [ 64 ]
 				SUB				RBX, RCX						; Nr to shift left -> RBX
 
-; Each word is shifted right, and the bits shifted out are ORd into the next (less significant) word.
-; RCX holds the number of bits to shift right, RBX holds the 64 bit complement for left shift.
-ShiftOrR		MACRO			lReg, rReg
-				SHLX			RDX, lReg, RBX					; shift 'bottom' bits to top
-				SHRX			rReg, rReg, RCX					; shift target bits right (leaving zero filled bits at top)
-				OR				rReg, RDX						; OR in new 'top' bits
-				ENDM
-
-; Macro for repetitive ops. Reduces chance of typo, easier to maintain, but not used anywhere else
+; Using Macro for repetitive ops. Reduces chance of typo, easier to maintain, but not used anywhere else
 				ShiftOrR		R15, RDI						; RDI is target to shift, but need bits from R15 to fill in high bits
 				ShiftOrR		R14, R15						; now R15 is target, but need bits from R14
 				ShiftOrR		R13, R14						; and on ...
@@ -140,8 +146,7 @@ ShiftOrR		MACRO			lReg, rReg
 
 ; with the bits shifted within the words, if the desired shift is more than 64 bits, word shifts are required
 ; verify Nr of word shift is zero to seven, use it as index into jump table; jump to appropriate shift
-@@nobits:
-				SHR				R8W, 6							; divide bit shift count by 64 to get Nr words to shift
+@@nobits:		SHR				R8W, 6							; divide bit shift count by 64 to get Nr words to shift
 				AND				R8, 7							; mask out anything above seven (shouldnt happen, but . . . jump table, be sure)
 				SHL				R8W, 3							; multiply by 8 to get offset into jump table
 				LEA				RAX, jtbl						; base address of jump table
@@ -153,8 +158,7 @@ ShiftOrR		MACRO			lReg, rReg
 jtbl:
 				QWORD			S0, S1, S2, S3, S4, S5, S6, S7
 ; no word shift, just bits, so store words in destination in the same order as they are in the regs
-S0:				
-				MOV				Q_PTR [ RCX ] [ 0 * 8 ], R9
+S0:				MOV				Q_PTR [ RCX ] [ 0 * 8 ], R9
 				MOV				Q_PTR [ RCX ] [ 1 * 8 ], R10
 				MOV				Q_PTR [ RCX ] [ 2 * 8 ], R11
 				MOV				Q_PTR [ RCX ] [ 3 * 8 ], R12
@@ -164,8 +168,7 @@ S0:
 				MOV				Q_PTR [ RCX ] [ 7 * 8 ], RDI	
 				JMP				@@R
 ; one word shift, store from regs to callers destination offsetting one word (zeroing first, most significant, word)
-S1:
-				MOV				Q_PTR [ RCX ] [ 0 * 8 ], RAX
+S1:				MOV				Q_PTR [ RCX ] [ 0 * 8 ], RAX
 				MOV				Q_PTR [ RCX ] [ 1 * 8 ], R9
 				MOV				Q_PTR [ RCX ] [ 2 * 8 ], R10
 				MOV				Q_PTR [ RCX ] [ 3 * 8 ], R11
@@ -175,8 +178,7 @@ S1:
 				MOV				Q_PTR [ RCX ] [ 7 * 8 ], R15	
 				JMP				@@R
 ; two word shift
-S2:
-				MOV				Q_PTR [ RCX ] [ 0 * 8 ], RAX
+S2:				MOV				Q_PTR [ RCX ] [ 0 * 8 ], RAX
 				MOV				Q_PTR [ RCX ] [ 1 * 8 ], RAX
 				MOV				Q_PTR [ RCX ] [ 2 * 8 ], R9
 				MOV				Q_PTR [ RCX ] [ 3 * 8 ], R10
@@ -234,9 +236,9 @@ S7:				MOV				Q_PTR [ RCX ] [ 0 * 8 ], RAX
 				MOV				Q_PTR [ RCX ] [ 5 * 8 ], RAX
 				MOV				Q_PTR [ RCX ] [ 6 * 8 ], RAX
 				MOV				Q_PTR [ RCX ] [ 7 * 8 ], R9		
-@@R:
+
 ; restore non-volatile regs to as-called condition
-				POP				RDI
+@@R:			POP				RDI
 				POP				R15
 				POP				R14
 				POP				R13
@@ -262,14 +264,12 @@ S7:				MOV				Q_PTR [ RCX ] [ 0 * 8 ], RAX
 				JL				@F
 				Zero512			RCX								; zero destination
 				RET
-@@:
-				AND				R8, 511							; mask out high bits above shift count, test for 0
+@@:				AND				R8, 511							; mask out high bits above shift count, test for 0
 				JNE				@F								; handle edge case, shift zero bits
-				CMP				RCX, RDX
-				JE				@@r
+				CMP				RCX, RDX						; destination same as source?
+				JE				@@r								; no copy needed
 				Copy512			RCX, RDX						; no shift, just copy (destination, source already in regs)
-@@r:
-				RET
+@@r:			RET
 @@:
 
 	IF __UseZ	
@@ -283,46 +283,21 @@ S7:				MOV				Q_PTR [ RCX ] [ 0 * 8 ], RAX
 				VPXORQ			ZMM28, ZMM28, ZMM28				; 
 				VALIGNQ			ZMM30, ZMM28, ZMM31, 1			; shift copy of words right one word (to get low order bits aligned for shift)
 				VPSHLDVQ		ZMM31, ZMM30, ZMM29				; shift, concatenating low bits of next word with each word to shift in
-@@:
+
 ; with the bits shifted within the words, if the desired shift is more than 64 bits, word shifts are required
-; verify Nr of word shift is zero to seven, use it as index into jump table; jump to appropriate shift
-				SHR				R8W, 6							; divide Nr bits to shift by 8, giving index to jump table
-				LEA				RAX, @jt						; address of jump table
-				JMP				Q_PTR [ RAX ] [ R8 * 8 ]		; jump to routine that shifts the appropriate Nr words
-@jt:
-				QWORD			@@E, @@1, @@2, @@3, @@4, @@5, @@6, @@7
-
-; Do the shifts of multiples of 64 bits (words), then store at callers destination, return
-@@1:			VALIGNQ			ZMM31, ZMM28, ZMM31, 1
-@@E:			VMOVDQA64		ZM_PTR [ RCX ], ZMM31
-				RET
-
-@@2:			VALIGNQ			ZMM31, ZMM28, ZMM31, 2
-				VMOVDQA64		ZM_PTR [ RCX ], ZMM31
-				RET
-
-@@3:			VALIGNQ			ZMM31, ZMM28, ZMM31, 3
-				VMOVDQA64		ZM_PTR [ RCX ], ZMM31
-				RET
-
-@@4:			VALIGNQ			ZMM31, ZMM28, ZMM31, 4
-				VMOVDQA64		ZM_PTR [ RCX ], ZMM31
-				RET
-
-@@5:			VALIGNQ			ZMM31, ZMM28, ZMM31, 5
-				VMOVDQA64		ZM_PTR [ RCX ], ZMM31
-				RET
-
-@@6:			VALIGNQ			ZMM31, ZMM28, ZMM31, 6
-				VMOVDQA64		ZM_PTR [ RCX ], ZMM31
-				RET
-
-@@7:			VALIGNQ			ZMM31, ZMM28, ZMM31, 7
-				VMOVDQA64		ZM_PTR [ RCX ], ZMM31
+@@:				LEA				RAX, ShiftMaskLt	
+				SHR				R8W, 6							; divide Nr bits to shift by 64 giving Nr words to shift (can only be 0-7 based on above validation)
+				LEA				RAX, [ RAX ] [ R8 ]				; Add index to base address of mask table
+				KMOVB			K1, B_PTR [ RAX ]				; create mask for words to be zeroed
+				LEA				RAX, ShiftPermuteLt				; address of permute table
+				SHL				R8W, 6							; multiply by 64 to get offset into permute table		
+				LEA				RAX, [ RAX ] [ R8 ] 			; Add index to base address of permute table	
+				VMOVDQA64		ZMM29, ZM_PTR [ RAX ]			; load permute indices
+				VPERMQ			ZMM31 {k1}{z}, ZMM29, ZMM31		; permute words in zmm31 to achieve word shift
+				VMOVDQA64		ZM_PTR [ RCX ], ZMM31			; store result at callers destination
 				RET
 				
 	ELSE
-
 ; save non-volatile regs to be used as work regs			
 				PUSH			R12								; going to use 8 gp regs for the 8 qword source
 				PUSH			R13								; R9, R10, R11 are considered 'volatile' and dont need to be saved
@@ -343,20 +318,11 @@ S7:				MOV				Q_PTR [ RCX ] [ 0 * 8 ], RAX
 				MOV				RDI, Q_PTR [ RDX ] [ 7 * 8 ]	; RDI holds source at index [7], least significant qword
 
 ; determine if / how many bits to shift
-
 				LEA				RCX, [ R8 ]						; R8 still carries users shift count.
 				AND				RCX, 03Fh						; Mask down to Nr of bits to shift left -> RCX
 				JZ				@@nobits						; might be word shifts, but no bit shifts required
 				LEA				RBX, [ 64 ]
 				SUB				RBX, RCX						; Nr to shift right -> RBX
-
-; Each word is shifted left, and the bits shifted out are ORd into the next (more significant) word.
-; RCX holds the number of bits to shift left, RBX holds the 64 bit complement for right shift.
-ShiftOrL		MACRO			lReg, rReg
-				SHRX			RDX, lReg, RBX					; shift 'top' bits to bottom
-				SHLX			rReg, rReg, RCX					; shift target bits left (leaving zero filled bits at bottom)
-				OR				rReg, RDX						; OR in new 'bottom' bits
-				ENDM
 
 ; Macro for repetitive ops. Reduces chance of typo, easier to maintain, but not used anywhere else
 				ShiftOrL		R10, R9							; R9 is target to shift, but need bits from R10 to fill in low bits
@@ -370,8 +336,7 @@ ShiftOrL		MACRO			lReg, rReg
 
 ; with the bits shifted within the words, if the desired shift is more than 64 bits, word shifts are required
 ; verify Nr of word shift is zero to seven, use it as index into jump table; jump to appropriate shift
-@@nobits:
-				SHR				R8W, 6
+@@nobits:		SHR				R8W, 6
 				AND				R8, 07h 
 				SHL				R8W, 3
 				LEA				RAX, @@jtbl
@@ -380,12 +345,12 @@ ShiftOrL		MACRO			lReg, rReg
 				POP				RBX								
 				POP				RCX								; restore RCX, destination address
 				JMP				Q_PTR [ R8 ]
+
 @@jtbl:
 				QWORD			@@0, @@1, @@2, @@3, @@4, @@5, @@6, @@7
 
 ; no word shift, just bits, so store words in destination in the same order as they are
-@@0:			
-				MOV				Q_PTR [ RCX ] [ 0 * 8 ], R9
+@@0:			MOV				Q_PTR [ RCX ] [ 0 * 8 ], R9
 				MOV				Q_PTR [ RCX ] [ 1 * 8 ], R10
 				MOV				Q_PTR [ RCX ] [ 2 * 8 ], R11
 				MOV				Q_PTR [ RCX ] [ 3 * 8 ], R12
@@ -396,8 +361,7 @@ ShiftOrL		MACRO			lReg, rReg
 				JMP				@@R
 
 ; one word shift, shifting one word (64+ bits) so store words in destination shifted left one, fill with zero
-@@1:			
-				MOV				Q_PTR [ RCX ] [ 0 * 8 ], R10
+@@1:			MOV				Q_PTR [ RCX ] [ 0 * 8 ], R10
 				MOV				Q_PTR [ RCX ] [ 1 * 8 ], R11
 				MOV				Q_PTR [ RCX ] [ 2 * 8 ], R12
 				MOV				Q_PTR [ RCX ] [ 3 * 8 ], R13
@@ -408,8 +372,7 @@ ShiftOrL		MACRO			lReg, rReg
 				JMP				@@R
 
 ; two word shift
-@@2:			
-				MOV				Q_PTR [ RCX ] [ 0 * 8], R11
+@@2:			MOV				Q_PTR [ RCX ] [ 0 * 8], R11
 				MOV				Q_PTR [ RCX ] [ 1 * 8], R12
 				MOV				Q_PTR [ RCX ] [ 2 * 8], R13
 				MOV				Q_PTR [ RCX ] [ 3 * 8], R14
@@ -420,8 +383,7 @@ ShiftOrL		MACRO			lReg, rReg
 				JMP				@@R
 
 ; three word shift
-@@3:			
-				MOV				Q_PTR [ RCX ] [ 0 * 8 ], R12
+@@3:			MOV				Q_PTR [ RCX ] [ 0 * 8 ], R12
 				MOV				Q_PTR [ RCX ] [ 1 * 8 ], R13
 				MOV				Q_PTR [ RCX ] [ 2 * 8 ], R14
 				MOV				Q_PTR [ RCX ] [ 3 * 8 ], R15
@@ -432,8 +394,7 @@ ShiftOrL		MACRO			lReg, rReg
 				JMP				@@R
 
 ; four word shift
-@@4:			
-				MOV				Q_PTR [ RCX ] [ 0 * 8 ], R13
+@@4:			MOV				Q_PTR [ RCX ] [ 0 * 8 ], R13
 				MOV				Q_PTR [ RCX ] [ 1 * 8 ], R14
 				MOV				Q_PTR [ RCX ] [ 2 * 8 ], R15
 				MOV				Q_PTR [ RCX ] [ 3 * 8 ], RDI
@@ -444,8 +405,7 @@ ShiftOrL		MACRO			lReg, rReg
 				JMP				@@R
 
 ; five word shift
-@@5:			
-				MOV				Q_PTR [ RCX ] [ 0 * 8 ], R14
+@@5:			MOV				Q_PTR [ RCX ] [ 0 * 8 ], R14
 				MOV				Q_PTR [ RCX ] [ 1 * 8 ], R15
 				MOV				Q_PTR [ RCX ] [ 2 * 8 ], RDI
 				MOV				Q_PTR [ RCX ] [ 3 * 8 ], RAX
@@ -456,8 +416,7 @@ ShiftOrL		MACRO			lReg, rReg
 				JMP				@@R
 
 ; six word shift
-@@6:			
-				MOV				Q_PTR [ RCX ] [ 0 * 8], R15
+@@6:			MOV				Q_PTR [ RCX ] [ 0 * 8], R15
 				MOV				Q_PTR [ RCX ] [ 1 * 8], RDI
 				MOV				Q_PTR [ RCX ] [ 2 * 8], RAX
 				MOV				Q_PTR [ RCX ] [ 3 * 8], RAX
@@ -468,8 +427,7 @@ ShiftOrL		MACRO			lReg, rReg
 				JMP				@@R
 
 ; seven word shift
-@@7:			
-				MOV				Q_PTR [ RCX ] [ 0 * 8 ], RDI
+@@7:			MOV				Q_PTR [ RCX ] [ 0 * 8 ], RDI
 				MOV				Q_PTR [ RCX ] [ 1 * 8 ], RAX
 				MOV				Q_PTR [ RCX ] [ 2 * 8 ], RAX
 				MOV				Q_PTR [ RCX ] [ 3 * 8 ], RAX
@@ -479,18 +437,15 @@ ShiftOrL		MACRO			lReg, rReg
 				MOV				Q_PTR [ RCX ] [ 7 * 8 ], RAX
 
 ;	restore non-volatile regs to as-called condition
-@@R:		
-				POP				RDI
+@@R:			POP				RDI
 				POP				R15
 				POP				R14
 				POP				R13
 				POP				R12
-@@ret:
-				RET
+@@ret:			RET
 
 	ENDIF
 				Leaf_End		shl_u, ui512
-
 
 ;--------------------------------------------------------------------------------------------------------------------------------------------------------------
 ;			and_u		-	logical 'AND' bits in lh_op, rh_op, put result in destination
@@ -597,7 +552,7 @@ ShiftOrL		MACRO			lReg, rReg
 
 ;--------------------------------------------------------------------------------------------------------------------------------------------------------------
 ;			xor_u		-	logical 'XOR' bits in lh_op, rh_op, put result in destination
-;			Prototype:		void or_u( u64* destination, u64* lh_op, u64* rh_op);
+;			Prototype:		void xor_u( u64* destination, u64* lh_op, u64* rh_op);
 ;			destination	-	Address of 64 byte aligned array of 8 64-bit words (QWORDS) 512 bits (in RCX)
 ;			lh_op		-	Address of 64 byte aligned array of 8 64-bit words (QWORDS) 512 bits (in RDX)
 ;			rh_op		-	Address of 64 byte aligned array of 8 64-bit words (QWORDS) 512 bits (in R8)
@@ -714,8 +669,7 @@ ShiftOrL		MACRO			lReg, rReg
 				JNC				@F								; all words zero?
 				LEA				EAX, [ retcode_neg_one ]		; exit with -1 if all eight qwords are zero (no significant bit)
 				RET
-@@:
-				LEA				EAX, [ 7 ]						; numbering of words in Z regs (and hence in k1 mask) is reverse in significance order
+@@:				LEA				EAX, [ 7 ]						; numbering of words in Z regs (and hence in k1 mask) is reverse in significance order
 				SUB				EAX, ECX						; so 7 minus leading k bit index becomes index to our ui512 bit qword
 				SHL				EAX, 6							; convert index to offset
 				VPCOMPRESSQ		ZMM0 {k1}{z}, ZMM31				; compress it into first word of ZMM0, which is also XMM0
@@ -733,8 +687,7 @@ ShiftOrL		MACRO			lReg, rReg
 				JNZ				@F								; Loop through values 0 to 7, then exit
 				LEA				EAX,  [ retcode_neg_one ]
 				RET
-@@:
-				LZCNT			R11, Q_PTR [ RCX ] [ R10 * 8 ]	; Leading zero count to find significant bit for index 
+@@:				LZCNT			R11, Q_PTR [ RCX ] [ R10 * 8 ]	; Leading zero count to find significant bit for index 
 				JC				@@NextWord						; None found, loop to next word
 				LEA				EAX, [ 7 ]
 				SUB				EAX, R10D						; calculate seven minus the word index (which word has the msb?)
@@ -745,7 +698,6 @@ ShiftOrL		MACRO			lReg, rReg
 				RET	
 
 	ENDIF
-
 				Leaf_End		msb_u, ui512
 
 ;--------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -767,8 +719,7 @@ ShiftOrL		MACRO			lReg, rReg
 				JNC				@F
 				LEA				EAX, [ retcode_neg_one ]		; exit with -1 if all eight qwords are zero (no significant bit)
 				RET
-@@:
-				AND				R10, 7							; mask out all but 0 -> 7
+@@:				AND				R10, 7							; mask out all but 0 -> 7
 				LEA				EAX, [ 7 ]						; numbering of words in Z regs (and hence in k1 mask) is reverse in significance order
 				SUB				EAX, R10D						; so 7 minus leading k bit index becomes index to our ui512 bit qword
 				XOR				R9D, R9D
@@ -791,8 +742,7 @@ ShiftOrL		MACRO			lReg, rReg
 				JNE				@F								; Loop through values 7 to 0, then exit
 				LEA				EAX, [ retcode_neg_one ]
 				RET
-@@:
-				TZCNT			RAX, Q_PTR [ RCX ] [ R10 * 8 ]	; Scan indexed word for significant bit
+@@:				TZCNT			RAX, Q_PTR [ RCX ] [ R10 * 8 ]	; Scan indexed word for significant bit
 				JC				@@NextWord						; None found, loop to next word
 				LEA				R11D, [ 7 ]						;  
 				SUB				R11D, R10D						; calculate seven minus the word index (which word has the msb?)

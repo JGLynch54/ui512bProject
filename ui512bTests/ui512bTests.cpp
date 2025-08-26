@@ -133,13 +133,58 @@ namespace ui512bTests
 		TEST_METHOD(ui512bits_01_shr)
 		{
 			u64 seed = 0;
+			alignas (64) u64 pattern[8]{ 2, 4, 6, 8, 10, 12, 14, 16 };
 			alignas (64) u64 num1[8]{ 0, 0, 0, 0, 0, 0, 0, 0 };
 			alignas (64) u64 num2[8]{ 0, 0, 0, 0, 0, 0, 0, 0 };
+
+			shr_u(num1, pattern, 0);
+			for (int j = 0; j < 8; j++)
+			{
+				Assert::AreEqual(pattern[j], num1[j]);
+			};
+			{
+				string test_message = "Shift right function testing. Edge case. Shift zero, should be copy. Tested true by assert\n";
+				Logger::WriteMessage(test_message.c_str());
+			};
+
+			shr_u(num1, pattern, 512);
+			for (int j = 0; j < 8; j++)
+			{
+				Assert::AreEqual(0ull, num1[j]);
+			};
+			{
+				string test_message = "Shift right function testing. Edge case. Shift 512, should be all zero. Tested true by assert\n";
+				Logger::WriteMessage(test_message.c_str());
+			};
+
+			shr_u(num1, pattern, 1);
+			for (int j = 0; j < 8; j++)
+			{
+				Assert::AreEqual(pattern[j] >> 1, num1[j]);
+			};
+			{
+				string test_message = "Shift right function testing. Shift one, should be each word halved. Tested true by assert\n";
+				Logger::WriteMessage(test_message.c_str());
+			};
+
+			shr_u(num1, pattern, 64);
+			Assert::AreEqual(0ull, num1[0]);	// most significant word now zero
+			for (int j = 1; j < 6; j++)
+			{
+				Assert::AreEqual(pattern[j - 1], num1[j]);
+			};
+
+			{
+				string test_message = "Shift right function testing. Shift 64, should be each word to next lower word. Tested true by assert\n";
+				Logger::WriteMessage(test_message.c_str());
+			};
+
 			u16 shftcnt = 0;
 			for (int j = 0; j < 8; j++)
 			{
 				num1[j] = 0xFF00000000000000ull;
 			};
+
 			// shift within each word to the end of the word
 			shftcnt = 64 - 8;
 			shr_u(num2, num1, shftcnt);
@@ -147,11 +192,12 @@ namespace ui512bTests
 			{
 				Assert::AreEqual(0x00000000000000FFull, num2[j]);
 			};
-			string runmsg2 = "Shift right function testing. Shift ff within each word to the end of each word.\n";
-			Logger::WriteMessage(runmsg2.c_str());
-			Logger::WriteMessage(L"Passed. Tested expected values via assert.\n");
+			{
+				string test_message = "Shift right function testing. Shift ff within each word to the end of each word. Passed. Tested expected values via assert.\n";
+				Logger::WriteMessage(test_message.c_str());
+			};
 
-			// shift into next word. Note: start validation at word 2 as most significant (index 0) word now zero
+			// shift (same ffh at high end of each word) into same place in next word. Note: start validation at word 2 as most significant (index 0) word now zero
 			shftcnt = 64;
 			shr_u(num2, num1, shftcnt);
 			Assert::AreEqual(num2[0], 0x0000000000000000ull);
@@ -159,23 +205,28 @@ namespace ui512bTests
 			{
 				Assert::AreEqual(0xFF00000000000000ull, num2[j]);
 			};
-			string runmsg3 = "Shift right function testing. Shift ff into next word.\n";
-			Logger::WriteMessage(runmsg3.c_str());
-			Logger::WriteMessage(L"Passed. Tested expected values via assert.\n");
+			{
+				string test_message = "Shift right function testing. Shift ff into next word. Passed. Tested expected values via assert\n";
+				Logger::WriteMessage(test_message.c_str());
+			};
+
 			// run same tests, with destination same as source, note: second test works on results of first now
 			for (int j = 0; j < 8; j++)
 			{
 				num1[j] = 0xFF00000000000000ull;
 			};
+
 			shftcnt = 64 - 8;
 			shr_u(num1, num1, shftcnt);
 			for (int j = 0; j < 8; j++)
 			{
 				Assert::AreEqual(0x00000000000000FFull, num1[j]);
 			};
-			string runmsg4 = "Shift right function testing. Shift ff into next word. Destination same as source\n";
-			Logger::WriteMessage(runmsg4.c_str());
-			Logger::WriteMessage(L"Passed. Tested expected values via assert.\n");
+			{
+				string test_message = "Shift right function testing. Shift ff into next word. Destination same as source. Passed. Tested expected values via assert.\n";
+				Logger::WriteMessage(test_message.c_str());
+			};
+
 			// shift into next word. Note: start at word 2 as first word now zero
 			shftcnt = 64;
 			shr_u(num1, num1, shftcnt);
@@ -198,9 +249,9 @@ namespace ui512bTests
 					{
 						string errmsg = "Shift right walk failed. shift count: "
 							+ to_string(i)
-							+ " word index: " + to_string(j)
-							+ " wlk1: " + to_string(wlk1[j])
-							+ " wlk2: " + to_string(wlk2[j])
+							+ "; word index: " + to_string(j)
+							+ "; wlk1: " + to_string(wlk1[j])
+							+ "; wlk2: " + to_string(wlk2[j])
 							+ ":\n";
 
 						Logger::WriteMessage(errmsg.c_str());
@@ -213,13 +264,11 @@ namespace ui512bTests
 
 			Assert::AreEqual(1ull, wlk2[7]);		// end of bit by bit walk, should be one
 			Assert::AreEqual(1ull, wlk1[7]);		// end of a 511 shift, should be one
-			string runmsg5 = "Shift right function testing. Walk a bit from msb to lsb. Verify values each step\n";
-			Logger::WriteMessage(runmsg5.c_str());
-			Logger::WriteMessage(L"Passed. Tested expected values via assert.\n");
 
-			string runmsg = "Shift right function testing. Ran tests " + to_string(4 + 512 + 511) + " times, with selected bit values.\n";
-			Logger::WriteMessage(runmsg.c_str());
-			Logger::WriteMessage(L"Passed. Tested expected values via assert.\n");
+			string test_message5 = "Shift right function testing. Walk a bit from msb to lsb. Verify values each step. Passed. Tested expected values via assert.\n";
+			Logger::WriteMessage(test_message5.c_str());
+			string test_message = "Shift right function testing. Ran tests " + to_string(4 + 512 + 511) + " times, with selected bit values. Passed. Tested expected values via assert.\n";
+			Logger::WriteMessage(test_message.c_str());
 		};
 
 		TEST_METHOD(ui512bits_01_shr_timing)
@@ -241,8 +290,8 @@ namespace ui512bTests
 				shr_u(num2, num1, shftcnt);
 			};
 
-			string runmsg = "Shift right function timing. Ran " + to_string(timingcount) + " times.\n";
-			Logger::WriteMessage(runmsg.c_str());
+			string test_message = "Shift right function timing. Ran " + to_string(timingcount) + " times.\n";
+			Logger::WriteMessage(test_message.c_str());
 		};
 
 		TEST_METHOD(ui512bits_01_SHR_reg)
@@ -271,13 +320,14 @@ namespace ui512bTests
 				Assert::IsTrue(r_before.AreEqual(&r_after), L"Register validation failed");
 			};
 
-			string runmsg = "shr_u function register validation. Ran " + to_string(regvercount) + " times.\n";
-			Logger::WriteMessage(runmsg.c_str());
+			string test_message = "shr_u function register validation. Ran " + to_string(regvercount) + " times.\n";
+			Logger::WriteMessage(test_message.c_str());
 		};
 
 		TEST_METHOD(ui512bits_02_shl)
 		{
 			u64 seed = 0;
+			alignas (64) u64 pattern[8]{ 2, 4, 6, 8, 10, 12, 14, 16 };
 			alignas (64) u64 num1[8]{ 0, 0, 0, 0, 0, 0, 0, 0 };
 			alignas (64) u64 num2[8]{ 0, 0, 0, 0, 0, 0, 0, 0 };
 			u16 shftcnt = 0;
@@ -285,13 +335,64 @@ namespace ui512bTests
 			{
 				num1[j] = 0x00000000000000FFull;
 			};
+
+			shl_u(num1, pattern, 0);
+			for (int j = 0; j < 8; j++)
+			{
+				Assert::AreEqual(pattern[j], num1[j]);
+			};
+			{
+				string test_message = "Shift left function testing. Edge case. Shift zero, should be copy. Tested true by assert\n";
+				Logger::WriteMessage(test_message.c_str());
+			};
+
+			shl_u(num1, pattern, 512);
+			for (int j = 0; j < 8; j++)
+			{
+				Assert::AreEqual(0ull, num1[j]);
+			};
+			{
+				string test_message = "Shift left function testing. Edge case. Shift 512, should be all zero. Tested true by assert\n";
+				Logger::WriteMessage(test_message.c_str());
+			};
+
+			shl_u(num1, pattern, 1);
+			for (int j = 0; j < 8; j++)
+			{
+				Assert::AreEqual(pattern[j] << 1, num1[j]);
+			};
+			{
+				string test_message = "Shift left function testing. Shift one, should be each word doubled. Tested true by assert\n";
+				Logger::WriteMessage(test_message.c_str());
+			};
+
+			shl_u(num1, pattern, 64);
+			Assert::AreEqual(0ull, num1[7]);	// least significant word now zero
+			for (int j = 1; j < 6; j++)
+			{
+				Assert::AreEqual(pattern[j + 1], num1[j]);
+			};
+			{
+				string test_message = "Shift left function testing. Shift 64, should be each word to next higher word. Tested true by assert\n";
+				Logger::WriteMessage(test_message.c_str());
+			};
+
 			// shift left within each word to the beginning of the word
+			for (int j = 0; j < 8; j++)
+			{
+				num1[j] = 0x00000000000000FFull;
+			};
 			shftcnt = 64 - 8;
 			shl_u(num2, num1, shftcnt);
 			for (int j = 0; j < 8; j++)
 			{
 				Assert::AreEqual(num2[j], 0xFF00000000000000ull);
 			};
+			{
+				string test_message = "Shift left function testing. Shift ff within each word to the beginning of each word. Passed. Tested expected values via assert.\n";
+				Logger::WriteMessage(test_message.c_str());
+			};
+
 			// shift into next word. Note: start validation at word 2 as least significant (index 7) word now zero
 			shftcnt = 64;
 			shl_u(num2, num1, shftcnt);
@@ -300,6 +401,10 @@ namespace ui512bTests
 			{
 				Assert::AreEqual(num2[j], 0x00000000000000FFull);
 			};
+			{
+				string test_message = "Shift left function testing. Shift ff into next word. Passed. Tested expected values via assert\n";
+				Logger::WriteMessage(test_message.c_str());
+			};
 
 			// run same tests, with destination same as source, note: second test works on results of first now
 			for (int j = 0; j < 8; j++)
@@ -307,11 +412,17 @@ namespace ui512bTests
 				num1[j] = 0x00000000000000FFull;
 			};
 			shftcnt = 64 - 8;
+
 			shl_u(num1, num1, shftcnt);
 			for (int j = 0; j < 8; j++)
 			{
 				Assert::AreEqual(num1[j], 0xFF00000000000000ull);
 			};
+			{
+				string test_message = "Shift left function testing. Shift ff into next word. Destination same as source. Passed. Tested expected values via assert.\n";
+				Logger::WriteMessage(test_message.c_str());
+			};
+
 			// shift into next word. Note: start at word 2 as first word now zero
 			shftcnt = 64;
 			shl_u(num1, num1, shftcnt);
@@ -319,6 +430,10 @@ namespace ui512bTests
 			for (int j = 6; j >= 0; j--)
 			{
 				Assert::AreEqual(num1[j], 0xFF00000000000000ull);
+			};
+			{
+				string test_message = "Shift left function testing. Shift ff into next word. Destination same as source. Passed. Tested expected values via assert.\n";
+				Logger::WriteMessage(test_message.c_str());
 			};
 
 			// walk a bit from least significant to most
@@ -335,9 +450,9 @@ namespace ui512bTests
 					{
 						string errmsg = "Shift left walk failed. shift count: "
 							+ to_string(i)
-							+ " wlk1: " + to_string(wlk1[j])
-							+ " wlk2: " + to_string(wlk2[j])
-							+ ":\n";
+							+ "; wlk1: " + to_string(wlk1[j])
+							+ "; wlk2: " + to_string(wlk2[j])
+							+ "\n";
 
 						Logger::WriteMessage(errmsg.c_str());
 					};
@@ -354,9 +469,8 @@ namespace ui512bTests
 			Assert::AreEqual(0x8000000000000000ull, wlk2[0]);
 			Assert::AreEqual(0x8000000000000000ull, wlk1[0]);
 
-			string runmsg = "Shift left function testing. Ran tests " + to_string(4 + 512 + 511) + " times, with selected bit values.\n";
-			Logger::WriteMessage(runmsg.c_str());
-			Logger::WriteMessage(L"Passed. Tested expected values via assert.\n");
+			string test_message = "Shift left function testing. Walk a bit from 0 to 511. Ran tests " + to_string(4 + 512 + 511) + " times, with selected bit values. Passed. Tested expected values via assert.\n";
+			Logger::WriteMessage(test_message.c_str());
 		};
 
 		TEST_METHOD(ui512bits_02_shl_timing)
@@ -376,8 +490,8 @@ namespace ui512bTests
 				shl_u(num2, num1, shftcnt);
 			};
 
-			string runmsg = "Shift left function timing. Ran " + to_string(timingcount) + " times.\n";
-			Logger::WriteMessage(runmsg.c_str());
+			string test_message = "Shift left function timing. Ran " + to_string(timingcount) + " times.\n";
+			Logger::WriteMessage(test_message.c_str());
 		};
 
 		TEST_METHOD(ui512bits_02_SHL_reg)
@@ -406,8 +520,8 @@ namespace ui512bTests
 				Assert::IsTrue(r_before.AreEqual(&r_after), L"Register validation failed");
 			};
 
-			string runmsg = "shl_u function register validation. Ran " + to_string(regvercount) + " times.\n";
-			Logger::WriteMessage(runmsg.c_str());
+			string test_message = "shl_u function register validation. Ran " + to_string(regvercount) + " times.\n";
+			Logger::WriteMessage(test_message.c_str());
 		};
 
 		TEST_METHOD(ui512bits_03_and)
@@ -432,8 +546,8 @@ namespace ui512bTests
 				};
 			};
 
-			string runmsg = "'AND' function testing. Ran tests " + to_string(runcount) + " times, each with pseudo random values.\n";
-			Logger::WriteMessage(runmsg.c_str());
+			string test_message = "'AND' function testing. Ran tests " + to_string(runcount) + " times, each with pseudo random values.\n";
+			Logger::WriteMessage(test_message.c_str());
 			Logger::WriteMessage(L"Passed. Tested expected values via assert.\n");
 		};
 
@@ -454,8 +568,8 @@ namespace ui512bTests
 				and_u(result, num2, num1);
 			};
 
-			string runmsg = "'AND' function timing. Ran " + to_string(timingcount) + " times.\n";
-			Logger::WriteMessage(runmsg.c_str());
+			string test_message = "'AND' function timing. Ran " + to_string(timingcount) + " times.\n";
+			Logger::WriteMessage(test_message.c_str());
 		};
 
 		TEST_METHOD(ui512bits_03_AND_reg)
@@ -484,8 +598,8 @@ namespace ui512bTests
 				Assert::IsTrue(r_before.AreEqual(&r_after), L"Register validation failed");
 			};
 
-			string runmsg = "and_u function register validation. Ran " + to_string(regvercount) + " times.\n";
-			Logger::WriteMessage(runmsg.c_str());
+			string test_message = "and_u function register validation. Ran " + to_string(regvercount) + " times.\n";
+			Logger::WriteMessage(test_message.c_str());
 		};
 
 		TEST_METHOD(ui512bits_04_or)
@@ -509,8 +623,8 @@ namespace ui512bTests
 					Assert::AreEqual(0xFFFFFFFFFFFFFFFFull, result[j]);
 				};
 			};
-			string runmsg = "'OR' function testing. Ran tests " + to_string(runcount) + " times, each with pseudo random values.\n";
-			Logger::WriteMessage(runmsg.c_str());
+			string test_message = "'OR' function testing. Ran tests " + to_string(runcount) + " times, each with pseudo random values.\n";
+			Logger::WriteMessage(test_message.c_str());
 			Logger::WriteMessage(L"Passed. Tested expected values via assert.\n");
 		};
 
@@ -532,8 +646,8 @@ namespace ui512bTests
 				or_u(result, num2, num1);
 			};
 
-			string runmsg = "'OR' function timing. Ran " + to_string(timingcount) + " times.\n";
-			Logger::WriteMessage(runmsg.c_str());
+			string test_message = "'OR' function timing. Ran " + to_string(timingcount) + " times.\n";
+			Logger::WriteMessage(test_message.c_str());
 		};
 
 		TEST_METHOD(ui512bits_04_OR_reg)
@@ -560,8 +674,8 @@ namespace ui512bTests
 				Assert::IsTrue(r_before.AreEqual(&r_after), L"Register validation failed");
 			};
 
-			string runmsg = "or_u function register validation. Ran " + to_string(regvercount) + " times.\n";
-			Logger::WriteMessage(runmsg.c_str());
+			string test_message = "or_u function register validation. Ran " + to_string(regvercount) + " times.\n";
+			Logger::WriteMessage(test_message.c_str());
 		};
 
 
@@ -585,8 +699,8 @@ namespace ui512bTests
 					Assert::AreEqual(0x0ull, result[j]);
 				};
 			};
-			string runmsg = "'XOR' function testing. Ran tests " + to_string(runcount) + " times, each with pseudo random values.\n";
-			Logger::WriteMessage(runmsg.c_str());
+			string test_message = "'XOR' function testing. Ran tests " + to_string(runcount) + " times, each with pseudo random values.\n";
+			Logger::WriteMessage(test_message.c_str());
 			Logger::WriteMessage(L"Passed. Tested expected values via assert.\n");
 		};
 
@@ -608,8 +722,8 @@ namespace ui512bTests
 				xor_u(result, num2, num1);
 			};
 
-			string runmsg = "'XOR' function timing. Ran " + to_string(timingcount) + " times.\n";
-			Logger::WriteMessage(runmsg.c_str());
+			string test_message = "'XOR' function timing. Ran " + to_string(timingcount) + " times.\n";
+			Logger::WriteMessage(test_message.c_str());
 		};
 
 		TEST_METHOD(ui512bits_04_XOR_reg)
@@ -636,8 +750,8 @@ namespace ui512bTests
 				Assert::IsTrue(r_before.AreEqual(&r_after), L"Register validation failed");
 			};
 
-			string runmsg = "xor_u function register validation. Ran " + to_string(regvercount) + " times.\n";
-			Logger::WriteMessage(runmsg.c_str());
+			string test_message = "xor_u function register validation. Ran " + to_string(regvercount) + " times.\n";
+			Logger::WriteMessage(test_message.c_str());
 		};
 		TEST_METHOD(ui512bits_05_not)
 		{
@@ -661,8 +775,8 @@ namespace ui512bTests
 					Assert::AreEqual(num2[j], result[j]);
 				};
 			};
-			string runmsg = "'NOT' function testing. Ran tests " + to_string(runcount) + " times, each with pseudo random values.\n";
-			Logger::WriteMessage(runmsg.c_str());
+			string test_message = "'NOT' function testing. Ran tests " + to_string(runcount) + " times, each with pseudo random values.\n";
+			Logger::WriteMessage(test_message.c_str());
 			Logger::WriteMessage(L"Passed. Tested expected values via assert.\n");
 		};
 
@@ -680,8 +794,8 @@ namespace ui512bTests
 				not_u(num1, num1);
 			};
 
-			string runmsg = "NOT function timing. Ran " + to_string(timingcount) + " times.\n";
-			Logger::WriteMessage(runmsg.c_str());
+			string test_message = "NOT function timing. Ran " + to_string(timingcount) + " times.\n";
+			Logger::WriteMessage(test_message.c_str());
 		};
 
 
@@ -709,8 +823,8 @@ namespace ui512bTests
 				Assert::IsTrue(r_before.AreEqual(&r_after), L"Register validation failed");
 			};
 
-			string runmsg = "not_u function register validation. Ran " + to_string(regvercount) + " times.\n";
-			Logger::WriteMessage(runmsg.c_str());
+			string test_message = "not_u function register validation. Ran " + to_string(regvercount) + " times.\n";
+			Logger::WriteMessage(test_message.c_str());
 		};
 
 		TEST_METHOD(ui512bits_06_msb)
@@ -733,50 +847,50 @@ namespace ui512bTests
 			s16 nobitloc = msb_u(nobit);
 			Assert::AreEqual(s16(-1), nobitloc);
 			{
-				string runmsg = "Most significant bit function testing. Find 'no bit'. Location returned: " + to_string(nobitloc) + ". Assert validated.\n";
-				Logger::WriteMessage(runmsg.c_str());
+				string test_message = "Most significant bit function testing. Find 'no bit'. Location returned: " + to_string(nobitloc) + ". Assert validated.\n";
+				Logger::WriteMessage(test_message.c_str());
 			}
 
 			s16 lowbitloc = msb_u(lowbit);
 			Assert::AreEqual(s16(0), lowbitloc);
 			{
-				string runmsg = "Most significant bit function testing. Find 'Low bit'. Location returned: " + to_string(lowbitloc) + ". Assert validated.\n";
-				Logger::WriteMessage(runmsg.c_str());
+				string test_message = "Most significant bit function testing. Find 'Low bit'. Location returned: " + to_string(lowbitloc) + ". Assert validated.\n";
+				Logger::WriteMessage(test_message.c_str());
 			}
 
 			s16 b2bitloc = msb_u(b2bit);
 			Assert::AreEqual(s16(1), b2bitloc);
 			{
-				string runmsg = "Most significant bit function testing. Find 'bit two bit'. Location returned: " + to_string(b2bitloc) + ". Assert validated.\n";
-				Logger::WriteMessage(runmsg.c_str());
+				string test_message = "Most significant bit function testing. Find 'bit two bit'. Location returned: " + to_string(b2bitloc) + ". Assert validated.\n";
+				Logger::WriteMessage(test_message.c_str());
 			}
 
 			s16 highbitloc = msb_u(highbit);
 			Assert::AreEqual(s16(511), highbitloc);
 			{
-				string runmsg = "Most significant bit function testing. Find 'High bit'. Location returned: " + to_string(highbitloc) + ". Assert validated.\n";
-				Logger::WriteMessage(runmsg.c_str());
+				string test_message = "Most significant bit function testing. Find 'High bit'. Location returned: " + to_string(highbitloc) + ". Assert validated.\n";
+				Logger::WriteMessage(test_message.c_str());
 			}
 
 			s16 twobitbitloc = msb_u(twobitsdiffwords);  // find / select msb bit of the two from different words
 			Assert::AreEqual(s16(384), twobitbitloc);
 			{
-				string runmsg = "Most significant bit function testing. Select msb from two different words. Location returned: " + to_string(twobitbitloc) + ". Assert validated.\n";
-				Logger::WriteMessage(runmsg.c_str());
+				string test_message = "Most significant bit function testing. Select msb from two different words. Location returned: " + to_string(twobitbitloc) + ". Assert validated.\n";
+				Logger::WriteMessage(test_message.c_str());
 			}
 
 			s16 b2bitswloc = msb_u(b2bitsw);	// find / select msb bit of the two from the same word
 			Assert::AreEqual(s16(4), b2bitswloc);
 			{
-				string runmsg = "Most significant bit function testing.Select msb from two within a word. Location returned: " + to_string(b2bitswloc) + ". Assert validated.\n";
-				Logger::WriteMessage(runmsg.c_str());
+				string test_message = "Most significant bit function testing.Select msb from two within a word. Location returned: " + to_string(b2bitswloc) + ". Assert validated.\n";
+				Logger::WriteMessage(test_message.c_str());
 			}
 
 			s16 choosebitloc = msb_u(choosebit);
 			Assert::AreEqual(s16(387), choosebitloc);
 			{
-				string runmsg = "Most significant bit function testing. Choose a bit. Location returned: " + to_string(choosebitloc) + ". Assert validated.\n";
-				Logger::WriteMessage(runmsg.c_str());
+				string test_message = "Most significant bit function testing. Choose a bit. Location returned: " + to_string(choosebitloc) + ". Assert validated.\n";
+				Logger::WriteMessage(test_message.c_str());
 			}
 
 			for (int i = 0; i < adjruncount; i++)
@@ -798,8 +912,8 @@ namespace ui512bTests
 
 			};
 
-			string runmsg = "Most significant bit function testing. Ran tests " + to_string(runcount) + " times, each with shifted values. Every bit location checked.\n";
-			Logger::WriteMessage(runmsg.c_str());
+			string test_message = "Most significant bit function testing. Ran tests " + to_string(runcount) + " times, each with shifted values. Every bit location checked.\n";
+			Logger::WriteMessage(test_message.c_str());
 			Logger::WriteMessage(L"Passed. Tested expected values via assert.\n");
 		};
 
@@ -819,8 +933,8 @@ namespace ui512bTests
 				bitloc = msb_u(num1);
 			};
 
-			string runmsg = "MSB function timing. Ran " + to_string(timingcount) + " times.\n";
-			Logger::WriteMessage(runmsg.c_str());
+			string test_message = "MSB function timing. Ran " + to_string(timingcount) + " times.\n";
+			Logger::WriteMessage(test_message.c_str());
 		};
 
 		TEST_METHOD(ui512bits_06_msb_reg)
@@ -845,8 +959,8 @@ namespace ui512bTests
 				Assert::IsTrue(r_before.AreEqual(&r_after), L"Register validation failed");
 			};
 
-			string runmsg = "msb_u function register validation. Ran " + to_string(regvercount) + " times.\n";
-			Logger::WriteMessage(runmsg.c_str());
+			string test_message = "msb_u function register validation. Ran " + to_string(regvercount) + " times.\n";
+			Logger::WriteMessage(test_message.c_str());
 		};
 
 		TEST_METHOD(ui512bits_07_lsb)
@@ -868,50 +982,50 @@ namespace ui512bTests
 			s16 nobitloc = lsb_u(nobit);
 			Assert::AreEqual(s16(-1), nobitloc);
 			{
-				string runmsg = "Least significant bit function testing. Find 'no bit'. Location returned: " + to_string(nobitloc) + ". Assert validated.\n";
-				Logger::WriteMessage(runmsg.c_str());
+				string test_message = "Least significant bit function testing. Find 'no bit'. Location returned: " + to_string(nobitloc) + ". Assert validated.\n";
+				Logger::WriteMessage(test_message.c_str());
 			}
 
 			s16 lowbitloc = lsb_u(lowbit);
 			Assert::AreEqual(s16(0), lowbitloc);
 			{
-				string runmsg = "Least significant bit function testing. Find 'Low bit'. Location returned: " + to_string(lowbitloc) + ". Assert validated.\n";
-				Logger::WriteMessage(runmsg.c_str());
+				string test_message = "Least significant bit function testing. Find 'Low bit'. Location returned: " + to_string(lowbitloc) + ". Assert validated.\n";
+				Logger::WriteMessage(test_message.c_str());
 			}
 
 			s16 b2bitloc = lsb_u(b2bit);
 			Assert::AreEqual(s16(1), b2bitloc);
 			{
-				string runmsg = "Least significant bit function testing. Find 'Bit 2 bit'. Location returned: " + to_string(b2bitloc) + ". Assert validated.\n";
-				Logger::WriteMessage(runmsg.c_str());
+				string test_message = "Least significant bit function testing. Find 'Bit 2 bit'. Location returned: " + to_string(b2bitloc) + ". Assert validated.\n";
+				Logger::WriteMessage(test_message.c_str());
 			}
 
 			s16 highbitloc = lsb_u(highbit);
 			Assert::AreEqual(s16(511), highbitloc);
 			{
-				string runmsg = "Least significant bit function testing. Find 'High bit'. Location returned: " + to_string(highbitloc) + ". Assert validated.\n";
-				Logger::WriteMessage(runmsg.c_str());
+				string test_message = "Least significant bit function testing. Find 'High bit'. Location returned: " + to_string(highbitloc) + ". Assert validated.\n";
+				Logger::WriteMessage(test_message.c_str());
 			}
 
 			s16 twobitbitloc = lsb_u(twobitsdiffwords);  // find / select lsb bit of the two from different words
 			Assert::AreEqual(s16(0), twobitbitloc);
 			{
-				string runmsg = "Least significant bit function testing. Select from two bits in different words. Location returned: " + to_string(twobitbitloc) + ". Assert validated.\n";
-				Logger::WriteMessage(runmsg.c_str());
+				string test_message = "Least significant bit function testing. Select from two bits in different words. Location returned: " + to_string(twobitbitloc) + ". Assert validated.\n";
+				Logger::WriteMessage(test_message.c_str());
 			}
 
 			s16 b2bitswloc = lsb_u(b2bitsw);	// find / select lsb bit of the two from the same word
 			Assert::AreEqual(s16(0), b2bitswloc);
 			{
-				string runmsg = "Least significant bit function testing. Select from two bits in same word. Location returned: " + to_string(b2bitswloc) + ". Assert validated.\n";
-				Logger::WriteMessage(runmsg.c_str());
+				string test_message = "Least significant bit function testing. Select from two bits in same word. Location returned: " + to_string(b2bitswloc) + ". Assert validated.\n";
+				Logger::WriteMessage(test_message.c_str());
 			}
 
 			s16 choosebitloc = lsb_u(choosebit);
 			Assert::AreEqual(s16(64), choosebitloc);
 			{
-				string runmsg = "Least significant bit function testing. Find 'Chhose bit'. Location returned: " + to_string(choosebitloc) + ". Assert validated.\n";
-				Logger::WriteMessage(runmsg.c_str());
+				string test_message = "Least significant bit function testing. Find 'Chhose bit'. Location returned: " + to_string(choosebitloc) + ". Assert validated.\n";
+				Logger::WriteMessage(test_message.c_str());
 			}
 
 			for (int i = 0; i < adjruncount; i++)
@@ -933,8 +1047,8 @@ namespace ui512bTests
 
 			};
 
-			string runmsg = "Least significant bit function testing. Ran tests " + to_string(runcount) + " times, each with shifted values. Every bit location checked.\n";
-			Logger::WriteMessage(runmsg.c_str());
+			string test_message = "Least significant bit function testing. Ran tests " + to_string(runcount) + " times, each with shifted values. Every bit location checked.\n";
+			Logger::WriteMessage(test_message.c_str());
 			Logger::WriteMessage(L"Passed. Tested expected values via assert.\n");
 		};
 
@@ -954,8 +1068,8 @@ namespace ui512bTests
 				bitloc = lsb_u(num1);
 			};
 
-			string runmsg = "LSB function timing. Ran " + to_string(timingcount) + " times.\n";
-			Logger::WriteMessage(runmsg.c_str());
+			string test_message = "LSB function timing. Ran " + to_string(timingcount) + " times.\n";
+			Logger::WriteMessage(test_message.c_str());
 		};
 
 		TEST_METHOD(ui512bits_07_lsb_reg)
@@ -980,8 +1094,8 @@ namespace ui512bTests
 				Assert::IsTrue(r_before.AreEqual(&r_after), L"Register validation failed");
 			};
 
-			string runmsg = "lsb_u function register validation. Ran " + to_string(regvercount) + " times.\n";
-			Logger::WriteMessage(runmsg.c_str());
+			string test_message = "lsb_u function register validation. Ran " + to_string(regvercount) + " times.\n";
+			Logger::WriteMessage(test_message.c_str());
 		};
 	};
 }

@@ -1,4 +1,4 @@
-Microsoft (R) Macro Assembler (x64) Version 14.44.35214.0   08/20/25 19:38:36
+Microsoft (R) Macro Assembler (x64) Version 14.44.35215.0   08/25/25 20:37:28
 ui512b.asm						     Page 1 - 1
 
 
@@ -108,7 +108,7 @@ ui512b.asm						     Page 1 - 1
  = 00000001		      C __UseZ			EQU				1									; Use AVX4 processor features (512 bit registers and instructions)
  = 00000000		      C __UseY			EQU				0									; Use AVX2 processor features (256 bit registers and instructions)
  = 00000000		      C __UseX			EQU				0									; Use SIMD/SSE processor features (128 bit registers and instructions)
- = 00000001		      C __UseQ			EQU				1									; Do not use extensions, use standard x64 bit registers and instructions
+ = 00000000		      C __UseQ			EQU				0									; Do not use extensions, use standard x64 bit registers and instructions
 			      C ;
  = 00000001		      C __UseBMI2		EQU				1									; Bit manipulation instructions (Haswell and later) ref:https://en.wikipedia.org/wiki/X86_Bit_manipulation_instruction_set
 			      C ;
@@ -511,44 +511,220 @@ ui512b.asm						     Page 1 - 1
 			      C ;   // find most significant bit in supplied source 512bit (8 QWORDS)
 			      C ;	// s16 msb_u( u64* );
 			      C ;   // returns: -1 if no most significant bit, bit number otherwise, bits numbered 0 to 511 inclusive
-			      C ;	//	Note:	a returned zero means the significant bit is bit0 of the eighth word of the 512bit source parameter; (the right most bit)
-			      C ;	//			a returned 511 means bit63 of the first word(the left most bit);	//	a returned 511 means bit63 of the first word
+			      C ;	//	Note:	a returned zero means the significant bit is bit0 of the eighth word of the 512bit source parameter; (the right most bit).
+			      C ;	//			a returned 511 means bit63 of the first word; (the left most bit).	
 			      C EXTERNDEF		msb_u:PROC
 			      C 
 			      C ;   // find least significant bit in supplied source 512bit (8 QWORDS)
 			      C ;	// s16 lsb_u( u64* );
 			      C ;   // returns: -1 if no least significant bit, bit number otherwise, bits numbered 0 to 511 inclusive
-			      C ;	//	Note:	a returned zero means the significant bit is bit0 of the eighth word of the 512bit source parameter; (the right most bit)
-			      C ;	//			a returned 511 means bit63 of the first word(the left most bit);	//	a returned 511 means bit63 of the first word
+			      C ;	//	Note:	a returned zero means the significant bit is bit0 of the eighth word of the 512bit source parameter; (the right most bit).
+			      C ;	//			a returned 511 means bit63 of the first word; (the left most bit).	
 			      C EXTERNDEF		lsb_u:PROC
+			      C 
+			      C ;==================================================================================================
+			      C 
+			      C ; Local macros
+			      C 
+			      C ; Each word is shifted right, and the bits shifted out are ORd into the next (less significant) word.
+			      C ; RCX holds the number of bits to shift right, RBX holds the 64 bit complement for left shift.
+			      C ShiftOrR		MACRO			lReg, rReg
+			      C 				SHLX			RDX, lReg, RBX					; shift 'bottom' bits to top
+			      C 				SHRX			rReg, rReg, RCX					; shift target bits right (leaving zero filled bits at top)
+			      C 				OR				rReg, RDX						; OR in new 'top' bits
+			      C 				ENDM
+			      C 
+			      C ; Each word is shifted left, and the bits shifted out are ORd into the next (more significant) word.
+			      C ; RCX holds the number of bits to shift left, RBX holds the 64 bit complement for right shift.
+			      C ShiftOrL		MACRO			lReg, rReg
+			      C 				SHRX			RDX, lReg, RBX					; shift 'top' bits to bottom
+			      C 				SHLX			rReg, rReg, RCX					; shift target bits left (leaving zero filled bits at bottom)
+			      C 				OR				rReg, RDX						; OR in new 'bottom' bits
+			      C 				ENDM
 			      C 
 			      C ENDIF			; ui512bMacros_INC
 			      C 
 								OPTION			casemap:none
 
- 00000000			ui512D			SEGMENT			'DATA'	ALIGN (64)				; Declare a data segment. Aligned 64.	
-								MemConstants									; Generate memory resident constants
- 00000000  00000008 [	     1	qOnes			QWORD           8 DUP (0ffffffffffffffffh)
+ 00000000			ui512D			SEGMENT			'RODATA' ALIGN (64)				; Declare a data segment. Read only. Aligned 64.
+
+				; Note: all data here is read-only, so can be shared between multiple threads
+					IF __UseZ		; Only need these tables if using zmm regs
+
+				; Note: storage of qwords in ZMM regs is in 'reverse' order, with the lowest index holding the most significant qword
+				;			so index 0 holds bits 511-448, index 7 holds bits 63-0
+				; But when the ZMM reg is stored to memory, the order is 'normal', with the lowest address holding the most significant qword
+
+				; table of indices for permuting words in a zmm reg to achieve right shifts by words
+ 00000000			ShiftPermuteRt	QWORD			0, 1, 2, 3, 4, 5, 6, 7			; identity permute for shift left/right by words
+	   0000000000000000
+	   0000000000000001
+	   0000000000000002
+	   0000000000000003
+	   0000000000000004
+	   0000000000000005
+	   0000000000000006
+	   0000000000000007
+ 00000040  0000000000000000					QWORD			0, 0, 1, 2, 3, 4, 5, 6			; shift right by one word
+	   0000000000000000
+	   0000000000000001
+	   0000000000000002
+	   0000000000000003
+	   0000000000000004
+	   0000000000000005
+	   0000000000000006
+ 00000080  0000000000000000					QWORD			0, 0, 0, 1, 2, 3, 4, 5			; shift right by two words
+	   0000000000000000
+	   0000000000000000
+	   0000000000000001
+	   0000000000000002
+	   0000000000000003
+	   0000000000000004
+	   0000000000000005
+ 000000C0  0000000000000000					QWORD			0, 0, 0, 0, 1, 2, 3, 4			; shift right by three words
+	   0000000000000000
+	   0000000000000000
+	   0000000000000000
+	   0000000000000001
+	   0000000000000002
+	   0000000000000003
+	   0000000000000004
+ 00000100  0000000000000000					QWORD			0, 0, 0, 0, 0, 1, 2, 3			; shift right by four words
+	   0000000000000000
+	   0000000000000000
+	   0000000000000000
+	   0000000000000000
+	   0000000000000001
+	   0000000000000002
+	   0000000000000003
+ 00000140  0000000000000000					QWORD			0, 0, 0, 0, 0, 0, 1, 2			; shift right by five words
+	   0000000000000000
+	   0000000000000000
+	   0000000000000000
+	   0000000000000000
+	   0000000000000000
+	   0000000000000001
+	   0000000000000002
+ 00000180  0000000000000000					QWORD			0, 0, 0, 0, 0, 0, 0, 1			; shift right by six words
+	   0000000000000000
+	   0000000000000000
+	   0000000000000000
+	   0000000000000000
+	   0000000000000000
+	   0000000000000000
+	   0000000000000001
+ 000001C0  0000000000000000					QWORD			0, 0, 0, 0, 0, 0, 0, 0			; shift right by seven words
+	   0000000000000000
+	   0000000000000000
+	   0000000000000000
+	   0000000000000000
+	   0000000000000000
+	   0000000000000000
+	   0000000000000000
+
+				; table of indices for permuting words in a zmm reg to achieve left shifts by words
+ 00000200			ShiftPermuteLt	QWORD			0, 1, 2, 3, 4, 5, 6, 7			; identity permute for shift left/right by words
+	   0000000000000000
+	   0000000000000001
+	   0000000000000002
+	   0000000000000003
+	   0000000000000004
+	   0000000000000005
+	   0000000000000006
+	   0000000000000007
+ 00000240  0000000000000001					QWORD			1, 2, 3, 4, 5, 6, 7, 0			; shift left by one word
+	   0000000000000002
+	   0000000000000003
+	   0000000000000004
+	   0000000000000005
+	   0000000000000006
+	   0000000000000007
+	   0000000000000000
+ 00000280  0000000000000002					QWORD			2, 3, 4, 5, 6, 7, 0, 0			; shift left by two words
+	   0000000000000003
+	   0000000000000004
+	   0000000000000005
+	   0000000000000006
+	   0000000000000007
+	   0000000000000000
+	   0000000000000000
+ 000002C0  0000000000000003					QWORD			3, 4, 5, 6, 7, 0, 0, 0			; shift left by three words
+	   0000000000000004
+	   0000000000000005
+	   0000000000000006
+	   0000000000000007
+	   0000000000000000
+	   0000000000000000
+	   0000000000000000
+ 00000300  0000000000000004					QWORD			4, 5, 6, 7, 0, 0, 0, 0			; shift left by four words
+	   0000000000000005
+	   0000000000000006
+	   0000000000000007
+	   0000000000000000
+	   0000000000000000
+	   0000000000000000
+	   0000000000000000
+ 00000340  0000000000000005					QWORD			5, 6, 7, 0, 0, 0, 0, 0			; shift left by five words
+	   0000000000000006
+	   0000000000000007
+	   0000000000000000
+	   0000000000000000
+	   0000000000000000
+	   0000000000000000
+	   0000000000000000
+ 00000380  0000000000000006					QWORD			6, 7, 0, 0, 0, 0, 0, 0			; shift left by six words
+	   0000000000000007
+	   0000000000000000
+	   0000000000000000
+	   0000000000000000
+	   0000000000000000
+	   0000000000000000
+	   0000000000000000
+ 000003C0  0000000000000007					QWORD			7, 0, 0, 0, 0, 0, 0, 0			; shift left by seven words	
+	   0000000000000000
+	   0000000000000000
+	   0000000000000000
+	   0000000000000000
+	   0000000000000000
+	   0000000000000000
+	   0000000000000000
+					ENDIF
+				; Generate memory resident constants (still aligned 64)
+								MemConstants
+ 00000400  00000008 [	     1	qOnes			QWORD           8 DUP (0ffffffffffffffffh)
 	    FFFFFFFFFFFFFFFF
 	   ]
- 00000040		     1	zeroQ			DQ				0
+ 00000440		     1	zeroQ			DQ				0
 	   0000000000000000
  = 00000000		     1	retcode_zero	EQU				0
  = 00000001		     1	retcode_one		EQU				1
  =-00000001		     1	retcode_neg_one	EQU				-1
- 00000048 00000000	     1	ret_zero		DD				retcode_zero						
- 0000004C 00000001	     1	ret_one			DD				retcode_one
- 00000050 FFFFFFFF	     1	ret_neg_one		DD				retcode_neg_one
- 00000054 01		     1	mskB0			DB				1
- 00000055 02		     1	mskB1			DB				2
- 00000056 04		     1	mskB2			DB				4
- 00000057 08		     1	mskB3			DB				8
- 00000058 10		     1	mskB4			DB				16
- 00000059 20		     1	mskB5			DB				32
- 0000005A 40		     1	mskB6			DB				64
- 0000005B 80		     1	mskB7			DB				128
- 0000005C FF		     1	mskAll8			DB				255
- 0000005D			ui512D			ENDS											; end of data segment
+ 00000448 00000000	     1	ret_zero		DD				retcode_zero						
+ 0000044C 00000001	     1	ret_one			DD				retcode_one
+ 00000450 FFFFFFFF	     1	ret_neg_one		DD				retcode_neg_one
+ 00000454 01		     1	mskB0			DB				1
+ 00000455 02		     1	mskB1			DB				2
+ 00000456 04		     1	mskB2			DB				4
+ 00000457 08		     1	mskB3			DB				8
+ 00000458 10		     1	mskB4			DB				16
+ 00000459 20		     1	mskB5			DB				32
+ 0000045A 40		     1	mskB6			DB				64
+ 0000045B 80		     1	mskB7			DB				128
+ 0000045C FF		     1	mskAll8			DB				255
+					IF __UseZ		; Only need these tables if using zmm regs
+						
+				; When shifting, some words become zero,table of masks for zeroing words when shifting right
+ 0000045D FF FE FC F8 F0	ShiftMaskRt		DB				0ffh, 0feh, 0fch, 0f8h, 0f0h, 0e0h, 0c0h, 080h
+	   E0 C0 80
+
+				; When shifting, some words become zero,table of masks for zeroing words when shifting left
+ 00000465 FF 7F 3F 1F 0F	ShiftMaskLt		DB				0ffh, 07fh, 03fh, 01fh, 0fh, 07h, 03h, 01h	
+	   07 03 01
+					ENDIF
+
+				; end of memory resident constants
+				; end of data segment
+ 0000046D			ui512D			ENDS											; end of data segment
 
 
 				;--------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -578,8 +754,7 @@ ui512b.asm						     Page 1 - 1
  0000001E  62 61 FD 48/ 7F   1					VMOVDQA64		ZM_PTR [ RCX ], ZMM31
 	   39
  00000024  C3							RET
- 00000025			@@:
- 00000025  49/ 81 E0						AND				R8, 511							; ensure no high bits above shift count
+ 00000025  49/ 81 E0		@@:				AND				R8, 511							; ensure no high bits above shift count
 	   000001FF
  0000002C  75 12						JNZ				@F								; handle edge case, zero bits to shift
  0000002E  48/ 3B CA						CMP				RCX, RDX
@@ -589,8 +764,7 @@ ui512b.asm						     Page 1 - 1
 	   3A
  00000039  62 61 FD 48/ 7F   1					VMOVDQA64		ZM_PTR [ RCX ], ZMM31
 	   39
- 0000003F			@@ret:
- 0000003F  C3							RET
+ 0000003F  C3			@@ret:			RET
  00000040			@@:
 
 					IF	__UseZ
@@ -607,71 +781,32 @@ ui512b.asm						     Page 1 - 1
 	   F4 07
  00000062  62 02 8D 40/ 73					VPSHRDVQ		ZMM31, ZMM30, ZMM29				; shift, concatenating low bits of next word with each word to shift in
 	   FD
- 00000068			@@:
 
-				; with the bits shifted within the words, if the desired shift is more than 64 bits, word shifts are required
-				; verify Nr of word shift is zero to seven, use it as index into jump table; jump to appropriate shift
- 00000068  66| 41/ C1 E8					SHR				R8W, 6							; divide Nr bits to shift by 64 giving Nr words to shift (can only be 0-7 based on above validation)
+				; with the bits shifted within the words (if needed), if the desired shift is more than 64 bits, word shifts are required
+ 00000068  48/ 8D 05		@@:				LEA				RAX, ShiftMaskRt	
+	   0000045D R
+ 0000006F  66| 41/ C1 E8					SHR				R8W, 6							; divide Nr bits to shift by 64 giving Nr words to shift (can only be 0-7 based on above validation)
 	   06
- 0000006D  48/ 8D 05						LEA				RAX, @jt						; address of jump table
-	   00000078 R
- 00000074  42/ FF 24 C0						JMP				Q_PTR [ RAX ] [ R8 * 8 ]		; jump to routine that shifts the appropriate Nr words
- 00000078			@jt:
- 00000078  00000000000000BF R					QWORD			@@E, @@1, @@2, @@3, @@4, @@5, @@6, @@7
-	   00000000000000B8 R
-	   00000000000000C6 R
-	   00000000000000D4 R
-	   00000000000000E2 R
-	   00000000000000F0 R
-	   00000000000000FE R
-	   000000000000010C R
- 000000B8  62 03 85 40/ 03	@@1:			VALIGNQ			ZMM31, ZMM31, ZMM28, 7			; shifts words in ZMM31 right 7, fills with zero, resulting seven plus filled zero to ZMM31
-	   FC 07
- 000000BF  62 61 FD 48/ 7F	@@E:			VMOVDQA64		ZM_PTR [ RCX ], ZMM31			; store result at callers destination
+ 00000074  4A/ 8D 04 00						LEA				RAX,  [ RAX ] [ R8 ]			; Add index to base address of mask table
+ 00000078  C5 F9/ 90 08						KMOVB			K1, B_PTR [ RAX ]				; create mask for words to be zeroed
+ 0000007C  48/ 8D 05						LEA				RAX, ShiftPermuteRt				; address of permute table
+	   00000000 R
+ 00000083  66| 41/ C1 E0					SHL				R8W, 6							; multiply by 64 to get offset into permute table		
+	   06
+ 00000088  4A/ 8D 04 00						LEA				RAX,  [ RAX ] [ R8 ] 			; Add offset to base address of permute table
+ 0000008C  62 61 FD 48/ 6F					VMOVDQA64		ZMM29, ZM_PTR [ RAX ]			; load permute indices
+	   28
+ 00000092  62 02 95 C1/ 36					VPERMQ			ZMM31 {k1}{z}, ZMM29, ZMM31		; permute words in zmm31 to achieve word shift
+	   FF
+ 00000098  62 61 FD 48/ 7F					VMOVDQA64		ZM_PTR [ RCX ], ZMM31			; store result at callers destination
 	   39
- 000000C5  C3							RET
-
- 000000C6  62 03 85 40/ 03	@@2:			VALIGNQ			ZMM31, ZMM31, ZMM28, 6
-	   FC 06
- 000000CD  62 61 FD 48/ 7F					VMOVDQA64		ZM_PTR [ RCX ], ZMM31			; store result at callers destination
-	   39
- 000000D3  C3							RET
-
- 000000D4  62 03 85 40/ 03	@@3:			VALIGNQ			ZMM31, ZMM31, ZMM28, 5
-	   FC 05
- 000000DB  62 61 FD 48/ 7F					VMOVDQA64		ZM_PTR [ RCX ], ZMM31			; store result at callers destination
-	   39
- 000000E1  C3							RET
-
- 000000E2  62 03 85 40/ 03	@@4:			VALIGNQ			ZMM31, ZMM31, ZMM28, 4
-	   FC 04
- 000000E9  62 61 FD 48/ 7F					VMOVDQA64		ZM_PTR [ RCX ], ZMM31			; store result at callers destination
-	   39
- 000000EF  C3							RET
-
- 000000F0  62 03 85 40/ 03	@@5:			VALIGNQ			ZMM31, ZMM31, ZMM28, 3
-	   FC 03
- 000000F7  62 61 FD 48/ 7F					VMOVDQA64		ZM_PTR [ RCX ], ZMM31			; store result at callers destination
-	   39
- 000000FD  C3							RET
-
- 000000FE  62 03 85 40/ 03	@@6:			VALIGNQ			ZMM31, ZMM31, ZMM28, 2
-	   FC 02
- 00000105  62 61 FD 48/ 7F					VMOVDQA64		ZM_PTR [ RCX ], ZMM31			; store result at callers destination
-	   39
- 0000010B  C3							RET
-
- 0000010C  62 03 85 40/ 03	@@7:			VALIGNQ			ZMM31, ZMM31, ZMM28, 1
-	   FC 01
- 00000113  62 61 FD 48/ 7F					VMOVDQA64		ZM_PTR [ RCX ], ZMM31			; store result at callers destination
-	   39
- 00000119  C3							RET	
+ 0000009E  C3							RET
 
 					ELSE
 					ENDIF	
 								Leaf_End		shr_u, ui512
- 0000011A		     1	shr_u			ENDP
- 0000011A		     1	ui512			ENDS
+ 0000009F		     1	shr_u			ENDP
+ 0000009F		     1	ui512			ENDS
 
 
 				;--------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -683,121 +818,78 @@ ui512b.asm						     Page 1 - 1
 				;			returns		-	nothing (0)
 
 								Leaf_Entry		shl_u, ui512
- 0000011A		     1	ui512			SEGMENT			PARA 'CODE'
- 0000011A  00000006 [	     1					DB				6 DUP (0cch)
+ 0000009F		     1	ui512			SEGMENT			PARA 'CODE'
+ 0000009F  00000006 [	     1					DB				6 DUP (0cch)
 	    CC
 	   ]
- 00000120		     1	shl_u			PROC			FRAME
+ 000000B0		     1	shl_u			PROC			FRAME
 								CheckAlign		RCX								; (OUT) destination of shifted 8 QWORDs
 								CheckAlign		RDX								; (IN)	source of 8 QWORDS
 
- 00000120  66| 41/ 81 F8					CMP				R8W, 512						; handle edge case, shift 512 or more bits
+ 000000B0  66| 41/ 81 F8					CMP				R8W, 512						; handle edge case, shift 512 or more bits
 	   0200
- 00000126  7C 0D						JL				@F
+ 000000B6  7C 0D						JL				@F
 								Zero512			RCX								; zero destination
- 00000128  62 01 85 40/ EF   1					VPXORQ			ZMM31, ZMM31, ZMM31
+ 000000B8  62 01 85 40/ EF   1					VPXORQ			ZMM31, ZMM31, ZMM31
 	   FF
- 0000012E  62 61 FD 48/ 7F   1					VMOVDQA64		ZM_PTR [ RCX ], ZMM31
+ 000000BE  62 61 FD 48/ 7F   1					VMOVDQA64		ZM_PTR [ RCX ], ZMM31
 	   39
- 00000134  C3							RET
- 00000135			@@:
- 00000135  49/ 81 E0						AND				R8, 511							; mask out high bits above shift count, test for 0
+ 000000C4  C3							RET
+ 000000C5  49/ 81 E0		@@:				AND				R8, 511							; mask out high bits above shift count, test for 0
 	   000001FF
- 0000013C  75 12						JNE				@F								; handle edge case, shift zero bits
- 0000013E  48/ 3B CA						CMP				RCX, RDX
- 00000141  74 0C						JE				@@r
+ 000000CC  75 12						JNE				@F								; handle edge case, shift zero bits
+ 000000CE  48/ 3B CA						CMP				RCX, RDX						; destination same as source?
+ 000000D1  74 0C						JE				@@r								; no copy needed
 								Copy512			RCX, RDX						; no shift, just copy (destination, source already in regs)
- 00000143  62 61 FD 48/ 6F   1					VMOVDQA64		ZMM31, ZM_PTR [ RDX ]
+ 000000D3  62 61 FD 48/ 6F   1					VMOVDQA64		ZMM31, ZM_PTR [ RDX ]
 	   3A
- 00000149  62 61 FD 48/ 7F   1					VMOVDQA64		ZM_PTR [ RCX ], ZMM31
+ 000000D9  62 61 FD 48/ 7F   1					VMOVDQA64		ZM_PTR [ RCX ], ZMM31
 	   39
- 0000014F			@@r:
- 0000014F  C3							RET
- 00000150			@@:
+ 000000DF  C3			@@r:			RET
+ 000000E0			@@:
 
 					IF __UseZ	
- 00000150  62 61 FD 48/ 6F					VMOVDQA64		ZMM31, ZM_PTR [ RDX ]			; load the 8 qwords into zmm reg (note: word order)
+ 000000E0  62 61 FD 48/ 6F					VMOVDQA64		ZMM31, ZM_PTR [ RDX ]			; load the 8 qwords into zmm reg (note: word order)
 	   3A
- 00000156  49/ 8D 00						LEA				RAX, [ R8 ]
- 00000159  66| 83 E0 3F						AND				AX, 03fh
- 0000015D  74 19						JZ				@F								; must be multiple of 64 bits to shift, no bits, just words to shift
+ 000000E6  49/ 8D 00						LEA				RAX, [ R8 ]
+ 000000E9  66| 83 E0 3F						AND				AX, 03fh
+ 000000ED  74 19						JZ				@F								; must be multiple of 64 bits to shift, no bits, just words to shift
 
 				; Do the shift of bits within the 64 bit words
- 0000015F  62 62 FD 48/ 7C					VPBROADCASTQ	ZMM29, RAX						; Nr bits to shift left
+ 000000EF  62 62 FD 48/ 7C					VPBROADCASTQ	ZMM29, RAX						; Nr bits to shift left
 	   E8
- 00000165  62 01 9D 40/ EF					VPXORQ			ZMM28, ZMM28, ZMM28				; 
+ 000000F5  62 01 9D 40/ EF					VPXORQ			ZMM28, ZMM28, ZMM28				; 
 	   E4
- 0000016B  62 03 9D 40/ 03					VALIGNQ			ZMM30, ZMM28, ZMM31, 1			; shift copy of words right one word (to get low order bits aligned for shift)
+ 000000FB  62 03 9D 40/ 03					VALIGNQ			ZMM30, ZMM28, ZMM31, 1			; shift copy of words right one word (to get low order bits aligned for shift)
 	   F7 01
- 00000172  62 02 8D 40/ 71					VPSHLDVQ		ZMM31, ZMM30, ZMM29				; shift, concatenating low bits of next word with each word to shift in
+ 00000102  62 02 8D 40/ 71					VPSHLDVQ		ZMM31, ZMM30, ZMM29				; shift, concatenating low bits of next word with each word to shift in
 	   FD
- 00000178			@@:
+
 				; with the bits shifted within the words, if the desired shift is more than 64 bits, word shifts are required
-				; verify Nr of word shift is zero to seven, use it as index into jump table; jump to appropriate shift
- 00000178  66| 41/ C1 E8					SHR				R8W, 6							; divide Nr bits to shift by 8, giving index to jump table
+ 00000108  48/ 8D 05		@@:				LEA				RAX, ShiftMaskLt	
+	   00000465 R
+ 0000010F  66| 41/ C1 E8					SHR				R8W, 6							; divide Nr bits to shift by 64 giving Nr words to shift (can only be 0-7 based on above validation)
 	   06
- 0000017D  48/ 8D 05						LEA				RAX, @jt						; address of jump table
-	   00000188 R
- 00000184  42/ FF 24 C0						JMP				Q_PTR [ RAX ] [ R8 * 8 ]		; jump to routine that shifts the appropriate Nr words
- 00000188			@jt:
- 00000188  00000000000001CF R					QWORD			@@E, @@1, @@2, @@3, @@4, @@5, @@6, @@7
-	   00000000000001C8 R
-	   00000000000001D6 R
-	   00000000000001E4 R
-	   00000000000001F2 R
-	   0000000000000200 R
-	   000000000000020E R
-	   000000000000021C R
-
-				; Do the shifts of multiples of 64 bits (words), then store at callers destination, return
- 000001C8  62 03 9D 40/ 03	@@1:			VALIGNQ			ZMM31, ZMM28, ZMM31, 1
-	   FF 01
- 000001CF  62 61 FD 48/ 7F	@@E:			VMOVDQA64		ZM_PTR [ RCX ], ZMM31
+ 00000114  4A/ 8D 04 00						LEA				RAX, [ RAX ] [ R8 ]				; Add index to base address of mask table
+ 00000118  C5 F9/ 90 08						KMOVB			K1, B_PTR [ RAX ]				; create mask for words to be zeroed
+ 0000011C  48/ 8D 05						LEA				RAX, ShiftPermuteLt				; address of permute table
+	   00000200 R
+ 00000123  66| 41/ C1 E0					SHL				R8W, 6							; multiply by 64 to get offset into permute table		
+	   06
+ 00000128  4A/ 8D 04 00						LEA				RAX, [ RAX ] [ R8 ] 			; Add index to base address of permute table	
+ 0000012C  62 61 FD 48/ 6F					VMOVDQA64		ZMM29, ZM_PTR [ RAX ]			; load permute indices
+	   28
+ 00000132  62 02 95 C1/ 36					VPERMQ			ZMM31 {k1}{z}, ZMM29, ZMM31		; permute words in zmm31 to achieve word shift
+	   FF
+ 00000138  62 61 FD 48/ 7F					VMOVDQA64		ZM_PTR [ RCX ], ZMM31			; store result at callers destination
 	   39
- 000001D5  C3							RET
-
- 000001D6  62 03 9D 40/ 03	@@2:			VALIGNQ			ZMM31, ZMM28, ZMM31, 2
-	   FF 02
- 000001DD  62 61 FD 48/ 7F					VMOVDQA64		ZM_PTR [ RCX ], ZMM31
-	   39
- 000001E3  C3							RET
-
- 000001E4  62 03 9D 40/ 03	@@3:			VALIGNQ			ZMM31, ZMM28, ZMM31, 3
-	   FF 03
- 000001EB  62 61 FD 48/ 7F					VMOVDQA64		ZM_PTR [ RCX ], ZMM31
-	   39
- 000001F1  C3							RET
-
- 000001F2  62 03 9D 40/ 03	@@4:			VALIGNQ			ZMM31, ZMM28, ZMM31, 4
-	   FF 04
- 000001F9  62 61 FD 48/ 7F					VMOVDQA64		ZM_PTR [ RCX ], ZMM31
-	   39
- 000001FF  C3							RET
-
- 00000200  62 03 9D 40/ 03	@@5:			VALIGNQ			ZMM31, ZMM28, ZMM31, 5
-	   FF 05
- 00000207  62 61 FD 48/ 7F					VMOVDQA64		ZM_PTR [ RCX ], ZMM31
-	   39
- 0000020D  C3							RET
-
- 0000020E  62 03 9D 40/ 03	@@6:			VALIGNQ			ZMM31, ZMM28, ZMM31, 6
-	   FF 06
- 00000215  62 61 FD 48/ 7F					VMOVDQA64		ZM_PTR [ RCX ], ZMM31
-	   39
- 0000021B  C3							RET
-
- 0000021C  62 03 9D 40/ 03	@@7:			VALIGNQ			ZMM31, ZMM28, ZMM31, 7
-	   FF 07
- 00000223  62 61 FD 48/ 7F					VMOVDQA64		ZM_PTR [ RCX ], ZMM31
-	   39
- 00000229  C3							RET
+ 0000013E  C3							RET
 								
 					ELSE
 					ENDIF
 								Leaf_End		shl_u, ui512
- 0000022A		     1	shl_u			ENDP
- 0000022A		     1	ui512			ENDS
-
+ 0000013F		     1	shl_u			ENDP
+ 0000013F		     1	ui512			ENDS
 
 				;--------------------------------------------------------------------------------------------------------------------------------------------------------------
 				;			and_u		-	logical 'AND' bits in lh_op, rh_op, put result in destination
@@ -808,29 +900,29 @@ ui512b.asm						     Page 1 - 1
 				;			returns		-	nothing (0)
 
 								Leaf_Entry		and_u, ui512
- 0000022A		     1	ui512			SEGMENT			PARA 'CODE'
- 0000022A  00000006 [	     1					DB				6 DUP (0cch)
+ 0000013F		     1	ui512			SEGMENT			PARA 'CODE'
+ 0000013F  00000006 [	     1					DB				6 DUP (0cch)
 	    CC
 	   ]
- 00000230		     1	and_u			PROC			FRAME
+ 00000150		     1	and_u			PROC			FRAME
 								CheckAlign		RCX
 								CheckAlign		RDX
 								CheckAlign		R8
 
 					IF __UseZ	
- 00000230  62 61 FD 48/ 6F					VMOVDQA64		ZMM31, ZM_PTR [ RDX ]			; load lh_op	
+ 00000150  62 61 FD 48/ 6F					VMOVDQA64		ZMM31, ZM_PTR [ RDX ]			; load lh_op	
 	   3A
- 00000236  62 41 85 40/ DB					VPANDQ			ZMM31, ZMM31, ZM_PTR [ R8 ]		; 'AND' with rh_op
+ 00000156  62 41 85 40/ DB					VPANDQ			ZMM31, ZMM31, ZM_PTR [ R8 ]		; 'AND' with rh_op
 	   38
- 0000023C  62 61 FD 48/ 7F					VMOVDQA64		ZM_PTR [ RCX ], ZMM31			; store at destination address
+ 0000015C  62 61 FD 48/ 7F					VMOVDQA64		ZM_PTR [ RCX ], ZMM31			; store at destination address
 	   39
 
 					ELSEIF __UseY
 					ENDIF
- 00000242  C3							RET		
+ 00000162  C3							RET		
 								Leaf_End		and_u, ui512
- 00000243		     1	and_u			ENDP
- 00000243		     1	ui512			ENDS
+ 00000163		     1	and_u			ENDP
+ 00000163		     1	ui512			ENDS
 
 				;--------------------------------------------------------------------------------------------------------------------------------------------------------------
 				;			or_u		-	logical 'OR' bits in lh_op, rh_op, put result in destination
@@ -841,62 +933,62 @@ ui512b.asm						     Page 1 - 1
 				;			returns		-	nothing (0)
 
 								Leaf_Entry		or_u, ui512
- 00000243		     1	ui512			SEGMENT			PARA 'CODE'
- 00000243  00000006 [	     1					DB				6 DUP (0cch)
+ 00000163		     1	ui512			SEGMENT			PARA 'CODE'
+ 00000163  00000006 [	     1					DB				6 DUP (0cch)
 	    CC
 	   ]
- 00000250		     1	or_u			PROC			FRAME
+ 00000170		     1	or_u			PROC			FRAME
 								CheckAlign		RCX
 								CheckAlign		RDX
 								CheckAlign		R8
 
 					IF __UseZ	
- 00000250  62 61 FD 48/ 6F					VMOVDQA64		ZMM31, ZM_PTR [ RDX ]			
+ 00000170  62 61 FD 48/ 6F					VMOVDQA64		ZMM31, ZM_PTR [ RDX ]			
 	   3A
- 00000256  62 41 85 40/ EB					VPORQ			ZMM31, ZMM31, ZM_PTR [ R8 ]
+ 00000176  62 41 85 40/ EB					VPORQ			ZMM31, ZMM31, ZM_PTR [ R8 ]
 	   38
- 0000025C  62 61 FD 48/ 7F					VMOVDQA64		ZM_PTR [ RCX ], ZMM31
+ 0000017C  62 61 FD 48/ 7F					VMOVDQA64		ZM_PTR [ RCX ], ZMM31
 	   39
 
 					ELSEIF __UseY
 					ENDIF
- 00000262  C3							RET 
+ 00000182  C3							RET 
 								Leaf_End		or_u, ui512
- 00000263		     1	or_u			ENDP
- 00000263		     1	ui512			ENDS
+ 00000183		     1	or_u			ENDP
+ 00000183		     1	ui512			ENDS
 
 				;--------------------------------------------------------------------------------------------------------------------------------------------------------------
 				;			xor_u		-	logical 'XOR' bits in lh_op, rh_op, put result in destination
-				;			Prototype:		void or_u( u64* destination, u64* lh_op, u64* rh_op);
+				;			Prototype:		void xor_u( u64* destination, u64* lh_op, u64* rh_op);
 				;			destination	-	Address of 64 byte aligned array of 8 64-bit words (QWORDS) 512 bits (in RCX)
 				;			lh_op		-	Address of 64 byte aligned array of 8 64-bit words (QWORDS) 512 bits (in RDX)
 				;			rh_op		-	Address of 64 byte aligned array of 8 64-bit words (QWORDS) 512 bits (in R8)
 				;			returns		-	nothing (0)
 
 								Leaf_Entry		xor_u, ui512
- 00000263		     1	ui512			SEGMENT			PARA 'CODE'
- 00000263  00000006 [	     1					DB				6 DUP (0cch)
+ 00000183		     1	ui512			SEGMENT			PARA 'CODE'
+ 00000183  00000006 [	     1					DB				6 DUP (0cch)
 	    CC
 	   ]
- 00000270		     1	xor_u			PROC			FRAME
+ 00000190		     1	xor_u			PROC			FRAME
 								CheckAlign		RCX
 								CheckAlign		RDX
 								CheckAlign		R8
 
 					IF __UseZ	
- 00000270  62 61 FD 48/ 6F					VMOVDQA64		ZMM31, ZM_PTR [ RDX ]			
+ 00000190  62 61 FD 48/ 6F					VMOVDQA64		ZMM31, ZM_PTR [ RDX ]			
 	   3A
- 00000276  62 41 85 40/ EF					VPXORQ			ZMM31, ZMM31, ZM_PTR [ R8 ]
+ 00000196  62 41 85 40/ EF					VPXORQ			ZMM31, ZMM31, ZM_PTR [ R8 ]
 	   38
- 0000027C  62 61 FD 48/ 7F					VMOVDQA64		ZM_PTR [ RCX ], ZMM31
+ 0000019C  62 61 FD 48/ 7F					VMOVDQA64		ZM_PTR [ RCX ], ZMM31
 	   39
 
 					ELSEIF __UseY
 					ENDIF
- 00000282  C3							RET 
+ 000001A2  C3							RET 
 								Leaf_End		xor_u, ui512
- 00000283		     1	xor_u			ENDP
- 00000283		     1	ui512			ENDS
+ 000001A3		     1	xor_u			ENDP
+ 000001A3		     1	ui512			ENDS
 
 				;--------------------------------------------------------------------------------------------------------------------------------------------------------------
 				;			not_u		-	logical 'NOT' bits in source, put result in destination
@@ -906,28 +998,28 @@ ui512b.asm						     Page 1 - 1
 				;			returns		-	nothing (0)
 
 								Leaf_Entry		not_u, ui512
- 00000283		     1	ui512			SEGMENT			PARA 'CODE'
- 00000283  00000006 [	     1					DB				6 DUP (0cch)
+ 000001A3		     1	ui512			SEGMENT			PARA 'CODE'
+ 000001A3  00000006 [	     1					DB				6 DUP (0cch)
 	    CC
 	   ]
- 00000290		     1	not_u			PROC			FRAME
+ 000001B0		     1	not_u			PROC			FRAME
 								CheckAlign		RCX
 								CheckAlign		RDX
 
 					IF __UseZ	
- 00000290  62 61 FD 48/ 6F					VMOVDQA64		ZMM31, ZM_PTR [RDX]			
+ 000001B0  62 61 FD 48/ 6F					VMOVDQA64		ZMM31, ZM_PTR [RDX]			
 	   3A
- 00000296  62 61 85 40/ DF					VPANDNQ			ZMM31, ZMM31, qOnes					; qOnes (declared in the data section of this module) is 8 QWORDS, binary all ones
-	   3D 00000000 R
- 000002A0  62 61 FD 48/ 7F					VMOVDQA64		ZM_PTR [RCX], ZMM31
+ 000001B6  62 61 85 40/ DF					VPANDNQ			ZMM31, ZMM31, qOnes					; qOnes (declared in the data section of this module) is 8 QWORDS, binary all ones
+	   3D 00000400 R
+ 000001C0  62 61 FD 48/ 7F					VMOVDQA64		ZM_PTR [RCX], ZMM31
 	   39
 
 					ELSEIF __UseY
 					ENDIF
- 000002A6  C3							RET	
+ 000001C6  C3							RET	
 								Leaf_End		not_u, ui512
- 000002A7		     1	not_u			ENDP
- 000002A7		     1	ui512			ENDS
+ 000001C7		     1	not_u			ENDP
+ 000001C7		     1	ui512			ENDS
 
 				;--------------------------------------------------------------------------------------------------------------------------------------------------------------
 				;			msb_u		-	find most significant bit in supplied source 512bit (8 QWORDS)
@@ -938,43 +1030,41 @@ ui512b.asm						     Page 1 - 1
 				;					a returned 511 means bit63 of the first word (the left most bit)
 
 								Leaf_Entry		msb_u, ui512
- 000002A7		     1	ui512			SEGMENT			PARA 'CODE'
- 000002A7  00000006 [	     1					DB				6 DUP (0cch)
+ 000001C7		     1	ui512			SEGMENT			PARA 'CODE'
+ 000001C7  00000006 [	     1					DB				6 DUP (0cch)
 	    CC
 	   ]
- 000002B0		     1	msb_u			PROC			FRAME
+ 000001D0		     1	msb_u			PROC			FRAME
 								CheckAlign		RCX								; (IN) source to scan 
 
 					IF __UseZ
- 000002B0  62 61 FD 48/ 6F					VMOVDQA64		ZMM31, ZM_PTR [RCX]				; Load source 
+ 000001D0  62 61 FD 48/ 6F					VMOVDQA64		ZMM31, ZM_PTR [RCX]				; Load source 
 	   39
- 000002B6  62 92 85 40/ 27					VPTESTMQ		k1, ZMM31, ZMM31				; find non-zero words (if any)
+ 000001D6  62 92 85 40/ 27					VPTESTMQ		k1, ZMM31, ZMM31				; find non-zero words (if any)
 	   CF
- 000002BC  C5 F9/ 93 C1						KMOVB			EAX, k1							; ZMM regs in least significant word to most ([0] lsw to [7] msw)
- 000002C0  F3/ 0F BC C8						TZCNT			ECX, EAX						; determine index of word from last (trailing) non-zero bit in mask
- 000002C4  73 08						JNC				@F								; all words zero?
- 000002C6  8D 04 25						LEA				EAX, [ retcode_neg_one ]		; exit with -1 if all eight qwords are zero (no significant bit)
+ 000001DC  C5 F9/ 93 C1						KMOVB			EAX, k1							; ZMM regs in least significant word to most ([0] lsw to [7] msw)
+ 000001E0  F3/ 0F BC C8						TZCNT			ECX, EAX						; determine index of word from last (trailing) non-zero bit in mask
+ 000001E4  73 08						JNC				@F								; all words zero?
+ 000001E6  8D 04 25						LEA				EAX, [ retcode_neg_one ]		; exit with -1 if all eight qwords are zero (no significant bit)
 	   FFFFFFFF
- 000002CD  C3							RET
- 000002CE			@@:
- 000002CE  8D 04 25						LEA				EAX, [ 7 ]						; numbering of words in Z regs (and hence in k1 mask) is reverse in significance order
+ 000001ED  C3							RET
+ 000001EE  8D 04 25		@@:				LEA				EAX, [ 7 ]						; numbering of words in Z regs (and hence in k1 mask) is reverse in significance order
 	   00000007
- 000002D5  2B C1						SUB				EAX, ECX						; so 7 minus leading k bit index becomes index to our ui512 bit qword
- 000002D7  C1 E0 06						SHL				EAX, 6							; convert index to offset
- 000002DA  62 62 FD C9/ 8B					VPCOMPRESSQ		ZMM0 {k1}{z}, ZMM31				; compress it into first word of ZMM0, which is also XMM0
+ 000001F5  2B C1						SUB				EAX, ECX						; so 7 minus leading k bit index becomes index to our ui512 bit qword
+ 000001F7  C1 E0 06						SHL				EAX, 6							; convert index to offset
+ 000001FA  62 62 FD C9/ 8B					VPCOMPRESSQ		ZMM0 {k1}{z}, ZMM31				; compress it into first word of ZMM0, which is also XMM0
 	   F8
- 000002E0  C4 E1 F9/ 7E C1					VMOVQ			RCX, XMM0						; extract the non-zero word (k1 still has index to it)
- 000002E5  F3/ 48/ 0F BD C9					LZCNT			RCX, RCX						; get the index of the non-zero bit within the word
- 000002EA  83 C0 3F						ADD				EAX, 63							; LZCNT counts leading non-zero bits. Subtract from 63 to get our bit index
- 000002ED  2B C1						SUB				EAX, ECX						; Word index * 64 + bit index becomes bit index to first non-zero bit (0 to 511, where )
- 000002EF  C3							RET
+ 00000200  C4 E1 F9/ 7E C1					VMOVQ			RCX, XMM0						; extract the non-zero word (k1 still has index to it)
+ 00000205  F3/ 48/ 0F BD C9					LZCNT			RCX, RCX						; get the index of the non-zero bit within the word
+ 0000020A  83 C0 3F						ADD				EAX, 63							; LZCNT counts leading non-zero bits. Subtract from 63 to get our bit index
+ 0000020D  2B C1						SUB				EAX, ECX						; Word index * 64 + bit index becomes bit index to first non-zero bit (0 to 511, where )
+ 0000020F  C3							RET
 
 					ELSE
 					ENDIF
-
 								Leaf_End		msb_u, ui512
- 000002F0		     1	msb_u			ENDP
- 000002F0		     1	ui512			ENDS
+ 00000210		     1	msb_u			ENDP
+ 00000210		     1	ui512			ENDS
 
 				;--------------------------------------------------------------------------------------------------------------------------------------------------------------
 				;			lsb_u		-	find least significant bit in supplied source 512bit (8 QWORDS)
@@ -985,50 +1075,49 @@ ui512b.asm						     Page 1 - 1
 				;					a returned 511 means bit63 of the first word (the left most bit)
 
 								Leaf_Entry		lsb_u, ui512				
- 000002F0		     1	ui512			SEGMENT			PARA 'CODE'
- 000002F0  00000006 [	     1					DB				6 DUP (0cch)
+ 00000210		     1	ui512			SEGMENT			PARA 'CODE'
+ 00000210  00000006 [	     1					DB				6 DUP (0cch)
 	    CC
 	   ]
- 00000300		     1	lsb_u			PROC			FRAME
+ 00000220		     1	lsb_u			PROC			FRAME
 								CheckAlign		RCX								; (IN) source to scan
 
 					IF __UseZ
- 00000300  62 61 FD 48/ 6F					VMOVDQA64		ZMM31, ZM_PTR [ RCX ]			; Load source 
+ 00000220  62 61 FD 48/ 6F					VMOVDQA64		ZMM31, ZM_PTR [ RCX ]			; Load source 
 	   39
- 00000306  62 92 85 40/ 27					VPTESTMQ		k1, ZMM31, ZMM31				; find non-zero words (if any)
+ 00000226  62 92 85 40/ 27					VPTESTMQ		k1, ZMM31, ZMM31				; find non-zero words (if any)
 	   CF
- 0000030C  C5 F9/ 93 C1						KMOVB			EAX, k1
- 00000310  F3/ 44/ 0F BD D0					LZCNT			R10D, EAX						; ZMM regs in least significant word to most ([0] lsw to [7] msw)
- 00000315  73 08						JNC				@F
- 00000317  8D 04 25						LEA				EAX, [ retcode_neg_one ]		; exit with -1 if all eight qwords are zero (no significant bit)
+ 0000022C  C5 F9/ 93 C1						KMOVB			EAX, k1
+ 00000230  F3/ 44/ 0F BD D0					LZCNT			R10D, EAX						; ZMM regs in least significant word to most ([0] lsw to [7] msw)
+ 00000235  73 08						JNC				@F
+ 00000237  8D 04 25						LEA				EAX, [ retcode_neg_one ]		; exit with -1 if all eight qwords are zero (no significant bit)
 	   FFFFFFFF
- 0000031E  C3							RET
- 0000031F			@@:
- 0000031F  49/ 83 E2 07						AND				R10, 7							; mask out all but 0 -> 7
- 00000323  8D 04 25						LEA				EAX, [ 7 ]						; numbering of words in Z regs (and hence in k1 mask) is reverse in significance order
+ 0000023E  C3							RET
+ 0000023F  49/ 83 E2 07		@@:				AND				R10, 7							; mask out all but 0 -> 7
+ 00000243  8D 04 25						LEA				EAX, [ 7 ]						; numbering of words in Z regs (and hence in k1 mask) is reverse in significance order
 	   00000007
- 0000032A  41/ 2B C2						SUB				EAX, R10D						; so 7 minus leading k bit index becomes index to our ui512 bit qword
- 0000032D  45/ 33 C9						XOR				R9D, R9D
- 00000330  41/ FF C1						INC				R9D
- 00000333  8A C8						MOV				CL, AL
- 00000335  41/ D3 E1						SHL				R9D, CL
- 00000338  C4 C1 79/ 92 C9					KMOVB			k1, R9D
- 0000033D  62 62 FD C9/ 8B					VPCOMPRESSQ		ZMM0 {k1}{z}, ZMM31
+ 0000024A  41/ 2B C2						SUB				EAX, R10D						; so 7 minus leading k bit index becomes index to our ui512 bit qword
+ 0000024D  45/ 33 C9						XOR				R9D, R9D
+ 00000250  41/ FF C1						INC				R9D
+ 00000253  8A C8						MOV				CL, AL
+ 00000255  41/ D3 E1						SHL				R9D, CL
+ 00000258  C4 C1 79/ 92 C9					KMOVB			k1, R9D
+ 0000025D  62 62 FD C9/ 8B					VPCOMPRESSQ		ZMM0 {k1}{z}, ZMM31
 	   F8
- 00000343  C4 E1 F9/ 7E C0					VMOVQ			RAX, XMM0						; extract the non-zero word
- 00000348  41/ C1 E2 06						SHL				R10D, 6							; convert index to offset
- 0000034C  F3/ 48/ 0F BC C0					TZCNT			RAX, RAX						; get the index of the non-zero bit within the word
- 00000351  41/ 03 C2						ADD				EAX, R10D						; Word index * 64 + bit index becomes bit index to first non-zero bit (0 to 511, where )
- 00000354  C3							RET
+ 00000263  C4 E1 F9/ 7E C0					VMOVQ			RAX, XMM0						; extract the non-zero word
+ 00000268  41/ C1 E2 06						SHL				R10D, 6							; convert index to offset
+ 0000026C  F3/ 48/ 0F BC C0					TZCNT			RAX, RAX						; get the index of the non-zero bit within the word
+ 00000271  41/ 03 C2						ADD				EAX, R10D						; Word index * 64 + bit index becomes bit index to first non-zero bit (0 to 511, where )
+ 00000274  C3							RET
 
 					ELSE
 					ENDIF
 								Leaf_End		lsb_u, ui512
- 00000355		     1	lsb_u			ENDP
- 00000355		     1	ui512			ENDS
+ 00000275		     1	lsb_u			ENDP
+ 00000275		     1	ui512			ENDS
 
 				END
-Microsoft (R) Macro Assembler (x64) Version 14.44.35214.0   08/20/25 19:38:36
+Microsoft (R) Macro Assembler (x64) Version 14.44.35215.0   08/25/25 20:37:28
 ui512b.asm						     Symbols 2 - 1
 
 
@@ -1044,6 +1133,8 @@ Copy512  . . . . . . . . . . . .	Proc
 Leaf_End . . . . . . . . . . . .	Proc
 Leaf_Entry . . . . . . . . . . .	Proc
 MemConstants . . . . . . . . . .	Proc
+ShiftOrL . . . . . . . . . . . .	Proc
+ShiftOrR . . . . . . . . . . . .	Proc
 VerifyRegs . . . . . . . . . . .	Proc
 Zero512Q . . . . . . . . . . . .	Proc
 Zero512  . . . . . . . . . . . .	Proc
@@ -1077,42 +1168,24 @@ Segments:
 
                 N a m e                  Length   Align   Class
 
-ui512D . . . . . . . . . . . . .	 0000005D 64	  'DATA'	
-ui512  . . . . . . . . . . . . .	 00000355 16	  'CODE'	
+ui512D . . . . . . . . . . . . .	 0000046D 64	  'RODATA'  
+ui512  . . . . . . . . . . . . .	 00000275 16	  'CODE'	
 
 
 Procedures, parameters, and locals:
 
                 N a m e                 Type     Value    Attr
 
-and_u  . . . . . . . . . . . . .	P 	 00000230 ui512	Length= 00000013 Public
-lsb_u  . . . . . . . . . . . . .	P 	 00000300 ui512	Length= 00000055 Public
-msb_u  . . . . . . . . . . . . .	P 	 000002B0 ui512	Length= 00000040 Public
-not_u  . . . . . . . . . . . . .	P 	 00000290 ui512	Length= 00000017 Public
-or_u . . . . . . . . . . . . . .	P 	 00000250 ui512	Length= 00000013 Public
-shl_u  . . . . . . . . . . . . .	P 	 00000120 ui512	Length= 0000010A Public
-  @@r  . . . . . . . . . . . . .	L 	 0000014F ui512	
-  @jt  . . . . . . . . . . . . .	L 	 00000188 ui512	
-  @@1  . . . . . . . . . . . . .	L 	 000001C8 ui512	
-  @@E  . . . . . . . . . . . . .	L 	 000001CF ui512	
-  @@2  . . . . . . . . . . . . .	L 	 000001D6 ui512	
-  @@3  . . . . . . . . . . . . .	L 	 000001E4 ui512	
-  @@4  . . . . . . . . . . . . .	L 	 000001F2 ui512	
-  @@5  . . . . . . . . . . . . .	L 	 00000200 ui512	
-  @@6  . . . . . . . . . . . . .	L 	 0000020E ui512	
-  @@7  . . . . . . . . . . . . .	L 	 0000021C ui512	
-shr_u  . . . . . . . . . . . . .	P 	 00000010 ui512	Length= 0000010A Public
+and_u  . . . . . . . . . . . . .	P 	 00000150 ui512	Length= 00000013 Public
+lsb_u  . . . . . . . . . . . . .	P 	 00000220 ui512	Length= 00000055 Public
+msb_u  . . . . . . . . . . . . .	P 	 000001D0 ui512	Length= 00000040 Public
+not_u  . . . . . . . . . . . . .	P 	 000001B0 ui512	Length= 00000017 Public
+or_u . . . . . . . . . . . . . .	P 	 00000170 ui512	Length= 00000013 Public
+shl_u  . . . . . . . . . . . . .	P 	 000000B0 ui512	Length= 0000008F Public
+  @@r  . . . . . . . . . . . . .	L 	 000000DF ui512	
+shr_u  . . . . . . . . . . . . .	P 	 00000010 ui512	Length= 0000008F Public
   @@ret  . . . . . . . . . . . .	L 	 0000003F ui512	
-  @jt  . . . . . . . . . . . . .	L 	 00000078 ui512	
-  @@1  . . . . . . . . . . . . .	L 	 000000B8 ui512	
-  @@E  . . . . . . . . . . . . .	L 	 000000BF ui512	
-  @@2  . . . . . . . . . . . . .	L 	 000000C6 ui512	
-  @@3  . . . . . . . . . . . . .	L 	 000000D4 ui512	
-  @@4  . . . . . . . . . . . . .	L 	 000000E2 ui512	
-  @@5  . . . . . . . . . . . . .	L 	 000000F0 ui512	
-  @@6  . . . . . . . . . . . . .	L 	 000000FE ui512	
-  @@7  . . . . . . . . . . . . .	L 	 0000010C ui512	
-xor_u  . . . . . . . . . . . . .	P 	 00000270 ui512	Length= 00000013 Public
+xor_u  . . . . . . . . . . . . .	P 	 00000190 ui512	Length= 00000013 Public
 
 
 Symbols:
@@ -1131,13 +1204,17 @@ CPNE . . . . . . . . . . . . . .	Number	 00000004h
 CPTRUE . . . . . . . . . . . . .	Number	 00000007h   
 D_PTR  . . . . . . . . . . . . .	Text   	 DWORD PTR
 Q_PTR  . . . . . . . . . . . . .	Text   	 QWORD PTR
+ShiftMaskLt  . . . . . . . . . .	Byte	 00000465 ui512D	
+ShiftMaskRt  . . . . . . . . . .	Byte	 0000045D ui512D	
+ShiftPermuteLt . . . . . . . . .	QWord	 00000200 ui512D	
+ShiftPermuteRt . . . . . . . . .	QWord	 00000000 ui512D	
 W_PTR  . . . . . . . . . . . . .	Text   	 WORD PTR
 XM_PTR . . . . . . . . . . . . .	Text   	 XMMWORD PTR
 YM_PTR . . . . . . . . . . . . .	Text   	 YMMWORD PTR
 ZM_PTR . . . . . . . . . . . . .	Text   	 ZMMWORD PTR
 __CheckAlign . . . . . . . . . .	Number	 00000000h   
 __UseBMI2  . . . . . . . . . . .	Number	 00000001h   
-__UseQ . . . . . . . . . . . . .	Number	 00000001h   
+__UseQ . . . . . . . . . . . . .	Number	 00000000h   
 __UseX . . . . . . . . . . . . .	Number	 00000000h   
 __UseY . . . . . . . . . . . . .	Number	 00000000h   
 __UseZ . . . . . . . . . . . . .	Number	 00000001h   
@@ -1151,20 +1228,20 @@ copy_u . . . . . . . . . . . . .	L 	 00000000 External
 legalnotes . . . . . . . . . . .	Number	 00000001h   
 m32BCST  . . . . . . . . . . . .	Text   	 DWORD BCST
 m64BCST  . . . . . . . . . . . .	Text   	 QWORD BCST
-mskAll8  . . . . . . . . . . . .	Byte	 0000005C ui512D	
-mskB0  . . . . . . . . . . . . .	Byte	 00000054 ui512D	
-mskB1  . . . . . . . . . . . . .	Byte	 00000055 ui512D	
-mskB2  . . . . . . . . . . . . .	Byte	 00000056 ui512D	
-mskB3  . . . . . . . . . . . . .	Byte	 00000057 ui512D	
-mskB4  . . . . . . . . . . . . .	Byte	 00000058 ui512D	
-mskB5  . . . . . . . . . . . . .	Byte	 00000059 ui512D	
-mskB6  . . . . . . . . . . . . .	Byte	 0000005A ui512D	
-mskB7  . . . . . . . . . . . . .	Byte	 0000005B ui512D	
-qOnes  . . . . . . . . . . . . .	QWord	 00000000 ui512D	
+mskAll8  . . . . . . . . . . . .	Byte	 0000045C ui512D	
+mskB0  . . . . . . . . . . . . .	Byte	 00000454 ui512D	
+mskB1  . . . . . . . . . . . . .	Byte	 00000455 ui512D	
+mskB2  . . . . . . . . . . . . .	Byte	 00000456 ui512D	
+mskB3  . . . . . . . . . . . . .	Byte	 00000457 ui512D	
+mskB4  . . . . . . . . . . . . .	Byte	 00000458 ui512D	
+mskB5  . . . . . . . . . . . . .	Byte	 00000459 ui512D	
+mskB6  . . . . . . . . . . . . .	Byte	 0000045A ui512D	
+mskB7  . . . . . . . . . . . . .	Byte	 0000045B ui512D	
+qOnes  . . . . . . . . . . . . .	QWord	 00000400 ui512D	
 reg_verify . . . . . . . . . . .	L 	 00000000 External
-ret_neg_one  . . . . . . . . . .	DWord	 00000050 ui512D	
-ret_one  . . . . . . . . . . . .	DWord	 0000004C ui512D	
-ret_zero . . . . . . . . . . . .	DWord	 00000048 ui512D	
+ret_neg_one  . . . . . . . . . .	DWord	 00000450 ui512D	
+ret_one  . . . . . . . . . . . .	DWord	 0000044C ui512D	
+ret_zero . . . . . . . . . . . .	DWord	 00000448 ui512D	
 retcode_neg_one  . . . . . . . .	Number	 -00000001h   
 retcode_one  . . . . . . . . . .	Number	 00000001h   
 retcode_zero . . . . . . . . . .	Number	 00000000h   
@@ -1173,7 +1250,7 @@ sub_uT64 . . . . . . . . . . . .	L 	 00000000 External
 sub_u  . . . . . . . . . . . . .	L 	 00000000 External
 ui512aMacros_INC . . . . . . . .	Text   	 1
 ui512bMacros_INC . . . . . . . .	Text   	 1
-zeroQ  . . . . . . . . . . . . .	QWord	 00000040 ui512D	
+zeroQ  . . . . . . . . . . . . .	QWord	 00000440 ui512D	
 zero_u . . . . . . . . . . . . .	L 	 00000000 External
 
 	   0 Warnings
